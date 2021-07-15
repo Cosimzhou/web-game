@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<!-- saved from url=(0077)https://hammerc.github.io/dou3d-ts/learning/learningNotes/lesson_3/index.html -->
+<html lang="en">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>模拟魔方</title>
+
+  <script src="./gl-matrix.js"></script>
+
+  <!-- 顶点着色器 -->
+  <script id="shader-vs" type="x-shader/x-vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec4 aVertexColor;
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMMatrix;
+    uniform mat4 invMMatrix;
+    uniform mat4 uVMatrix;
+    uniform mat4 invVMatrix;
+    uniform mat4 uPMatrix;
+    uniform mat4 invPMatrix;
+
+    uniform vec3 lightDirection;
+    uniform vec3 eyeDirection;
+    uniform vec4 ambientColor;
+
+    varying vec4 vColor;
+
+    void main() {
+        vec3  invLight = normalize(invMMatrix *invVMatrix * invPMatrix * vec4(lightDirection, 0.0)).xyz;
+        vec3  invEye   = normalize(invMMatrix *invVMatrix * invPMatrix * vec4(eyeDirection, 0.0)).xyz;
+        vec3  halfLE   = normalize(invLight + invEye);
+        float diffuse  = clamp(dot(aVertexNormal, invLight), 0.0, 1.0);
+        float specular = pow(clamp(dot(aVertexNormal, halfLE), 0.0, 1.0), 50.0);
+        vec4  light    = aVertexColor * vec4(vec3(diffuse), 1.0) + vec4(vec3(specular), 1.0);
+        vColor         = light + ambientColor;
+
+        gl_Position    = uPMatrix * uVMatrix * uMMatrix * vec4(aVertexPosition, 1.0);
+    }
+  </script>
+
+  <!-- 片段着色器 -->
+  <script id="shader-fs" type="x-shader/x-fragment">
+    precision mediump float;
+
+    varying vec4 vColor;
+    void main() {
+        gl_FragColor = vColor;
+    }
+  </script>
+
+  <script type="text/javascript" src="./draw-cube.js"></script>
+</head>
+
+<body onload="startup();" style="background-color:#7f7f7f">
+  <center>
+    <canvas id="myGLCanvas" width="500" height="500"></canvas><br>
+    <input type="button" value="恢复" onclick="recoverToggle()">
+    <input type="button" value="游转" onclick="hoverToggle()">
+    <input type="button" value="打乱" onclick="randomToggle()"><br>
+    <input type="button" value="随机" onclick="shuffle()">
+    <input type="button" value="复位" onclick="reset()"><br>
+
+    <input type="button" value="正视" onclick="focusView(0)">
+    <input type="button" value="正侧" onclick="focusView(1)"><br>
+    <input type="button" value="前面" onclick="focusASide(0)">
+    <input type="button" value="左面" onclick="focusASide(2)">
+    <input type="button" value="上面" onclick="focusASide(4)"><br>
+    <input type="button" value="后面" onclick="focusASide(1)">
+    <input type="button" value="右面" onclick="focusASide(3)">
+    <input type="button" value="下面" onclick="focusASide(5)">
+  </center>
+</body>
+
+</html>

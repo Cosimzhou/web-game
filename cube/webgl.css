@@ -1,0 +1,13 @@
+canvas {
+	border: 2px solid black;
+	background-color: black;
+    vertical-align: middle;
+    margin: 0 auto;
+    text-align: center;
+}
+video {
+	display: none;
+}
+body {
+    background-color: black;
+}

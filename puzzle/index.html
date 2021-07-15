@@ -1,0 +1,36 @@
+<html lang="zh-cn" data-inboxsdk-session-id="1586410532384-0.9605700358468232">
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+  <title>纯白地狱拼图</title>
+  <script type="text/javascript" src="./pintu.js"> </script>
+</head>
+
+<body bgcolor="#c1c1c1" style="overflow: hidden;">
+  <canvas id="myCanvas" width="2718" height="1532"
+    style="width: 1359px; height: 766px;"></canvas>
+  <div id="timer"
+    style="top:0px; float:right; background-color:rgba(50,40,50,0.4); width: 100px; height: 30px; position: fixed; z-index: 100;user-seletct: none; -webkit-user-seletct: none; -moz-user-seletct: none; -ms-user-seletct: none;">
+  </div>
+  <script type="text/javascript">
+    var Container = document.getElementById("myCanvas");
+    Container.width = document.body.clientWidth * 2;
+    Container.height = document.body.clientHeight * 2;
+    Container.style.width = document.body.clientWidth;
+    Container.style.height = document.body.clientHeight;
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener("touchmove", function(e) {
+      e.preventDefault();
+    }, {
+      passive: false
+    }); //禁止页面滑动
+
+    new Game(Container);
+
+    Start();
+  </script>
+</body>
+
+</html>
