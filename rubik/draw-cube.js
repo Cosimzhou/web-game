@@ -1,4 +1,5 @@
 var gl;
+var ctx2d;
 var shaderProgram;
 var circleVertexBuffer, circleNormalBuffer, circleVertexIndexBuffer,
   circleColorBuffer;
@@ -9,6 +10,12 @@ var travel = 0;
 var modeRotate = 0; // recover: 1, random: 2
 var dragging = false,
   click = false;
+var cubeOrderNum = 3;
+var cubeOrderHalf = 1;
+var c2dMargin = (6 * 100 - 500) / 5,
+  c2dSide = 100 - 2 * c2dMargin;
+var c2dPixelLen = c2dSide / cubeOrderNum;
+
 var mayCircle = null;
 var moveCount = 0;
 var currentRotate = {};
@@ -70,6 +77,24 @@ var colorArray = [
     [1.0, 0.9, 0.5, 1.0] // Yellow
 ];
 
+var colorArray2D = [
+    "#000", // Black
+    "#fff", // White
+    "#f60", // Orange
+    "#0f0", // Green
+    "#f00", // Red
+    "#00f", // Blue
+    "#fe8" // Yellow
+];
+
+var sideColorMap = [
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0]], ];
+
 var xyzAxis = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, -1, 0]];
 var R = 2.1;
 var A90 = Math.PI / 2,
@@ -93,8 +118,8 @@ var transformInfos = [
     [1, A180, [0, 0, R], [6]],
     [1, A180, [R, 0, R], [6, 2]],
     [1, A180, [R, R, R], [6, 2, 5]],
-    [1, A180, [0, R, R], [6, 0, 5]],
-    [1, A270, [0, R, R], [3, 0, 6]],
+    [1, A180, [0, R, R], [6, 0, 5]], //*
+    [1, A270, [0, R, R], [3, 0, 6]], //*
     [1, A270, [R, R, R], [3, 2, 6]],
     [2, A180, [R, R, R], [6, 4, 3]],
     [2, A180, [R, 0, R], [6, 4]],
@@ -102,13 +127,13 @@ var transformInfos = [
 
     // Right
     [2, A90, [0, 0, R], [2]],
-    [2, A90, [0, R, R], [2, 0, 3]],
-    [3, A180, [R, R, 0], [0, 4, 5]],
+    [2, A90, [0, R, R], [2, 0, 3]], //*
+    [3, A180, [R, R, 0], [0, 4, 5]], //*
 
     // Left
     [2, A270, [0, 0, R], [4]],
-    [2, A270, [0, R, R], [4, 0, 3]],
-    [3, A270, [R, R, 0], [0, 5, 2]],
+    [2, A270, [0, R, R], [4, 0, 3]], //*
+    [3, A270, [R, R, 0], [0, 5, 2]], //*
 
     // Top
     [1, A270, [0, 0, R], [3]],
@@ -201,19 +226,6 @@ function setupShaders() {
     'ambientColor');
 
 
-  // 初始化矩阵
-  modelMatrix = glMatrix.mat4.create();
-  viewMatrix = glMatrix.mat4.create();
-  projectionMatrix = glMatrix.mat4.create();
-
-  invModelMatrix = glMatrix.mat4.create();
-  invViewMatrix = glMatrix.mat4.create();
-  invProjMatrix = glMatrix.mat4.create();
-
-  rotateMatrix = glMatrix.mat4.create();
-  glMatrix.mat4.identity(rotateMatrix);
-
-  modelMatrixStack = [];
 }
 
 function loadShaderFromDOM(id) {
@@ -349,7 +361,7 @@ var perspectiveAngle = 0,
   radius = 15;
 var animeCursor = 0;
 
-function draw() {
+function draw3D() {
   gl.clearColor(0.4, 0.4, 0.4, 1);
   gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -400,6 +412,7 @@ function draw() {
 
     uploadModelMatrixToShader();
     drawCube(tf[3]);
+    projectSubCube2D(tfi);
     popModelMatrix();
   }
 
@@ -495,7 +508,7 @@ function genRandomRotate() {
   var axisIdx, lyr, differAng = false;
   while (true) {
     axisIdx = parseInt(Math.random() * 3);
-    lyr = parseInt(Math.random() * 3 - 1);
+    lyr = parseInt(Math.random() * cubeOrderNum - cubeOrderHalf);
     if (axisIdx != lastAxis) break;
     if (lyr != lastLyr) { differAng = true; break; }
   }
@@ -533,6 +546,7 @@ function pushRecord(act) {
   }
 
   moveCount++;
+  draw2D();
 }
 
 function focusView(f) {
@@ -579,6 +593,7 @@ function focusASide(f) {
 function reset() {
   cubeRotateTrace = {};
   moveCount = 0;
+  draw2D();
 }
 
 function popRecord() {
@@ -595,6 +610,7 @@ function popRecord() {
       trace.pop();
     }
   }
+  draw2D();
   return action;
 }
 
@@ -640,6 +656,74 @@ function drawCircle() {
     .UNSIGNED_SHORT, 0);
 }
 
+function projectSubCube2D(cubeId) {
+  var pos = modelMatrix.slice(12, 15).map(function(x) {
+    return parseInt(Math.round(x / R));
+  });
+  var faceMat = modelMatrix.slice(0, 12).map(function(x) {
+    return parseInt(Math.round(x));
+  });
+  var transInfo = transformInfos[cubeId];
+
+  function findSide(axis, val) {
+    val = Math.sign(val);
+    for (var i = 0; i < 3; i++) {
+      if (val == faceMat[i * 4 + axis]) {
+        return transInfo[3][(i + 1) % 3];
+      }
+    }
+    return 0;
+  }
+
+  // draw ...
+  for (var axis = 0, s, x, y, c; axis < 3; axis++) {
+    if (Math.abs(pos[axis]) < 1) continue;
+    s = axis << 1;
+    x = pos[axis == 0 ? 1 : 0] + 1;
+    y = 1 - pos[axis == 2 ? 1 : 2];
+
+    if (pos[axis] == 1) {
+      c = findSide(axis, 1);
+    } else if (pos[axis] == -1) {
+      s++;
+      c = findSide(axis, -1);
+    }
+
+    sideColorMap[s][x][y] = c;
+  }
+}
+
+
+function setPixelSide(s) {
+  ctx2d.translate(c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
+  ctx2d.scale(c2dPixelLen, c2dPixelLen);
+  ctx2d.translate(0.05, 0.05);
+}
+
+function drawPixel(x, y, c) {
+  ctx2d.beginPath();
+  ctx2d.fillStyle = colorArray2D[c];
+  ctx2d.rect(x, y, 0.9, 0.9);
+  ctx2d.fill();
+  ctx2d.closePath();
+}
+
+function draw2D() {
+  ctx2d.setTransform(1, 0, 0, 1, 0, 0);
+  ctx2d.fillStyle = "#777";
+  ctx2d.clearRect(0, 0, 500, 100);
+
+  for (var s = 0; s < 6; s++) {
+    ctx2d.save();
+    setPixelSide(s);
+    for (var x = 0; x < cubeOrderNum; x++)
+      for (var y = 0; y < cubeOrderNum; y++) {
+        drawPixel(x, y, sideColorMap[s][x][y]);
+      }
+    ctx2d.restore();
+  }
+}
+
 
 function hoverToggle() { travel = !travel; }
 
@@ -658,17 +742,28 @@ function enterManual() {
   mayCircle = null;
 }
 
+function initVaribles() {
+  // 初始化矩阵
+  modelMatrix = glMatrix.mat4.create();
+  viewMatrix = glMatrix.mat4.create();
+  projectionMatrix = glMatrix.mat4.create();
+
+  invModelMatrix = glMatrix.mat4.create();
+  invViewMatrix = glMatrix.mat4.create();
+  invProjMatrix = glMatrix.mat4.create();
+
+  rotateMatrix = glMatrix.mat4.create();
+  glMatrix.mat4.identity(rotateMatrix);
+
+  modelMatrixStack = [];
+}
+
 function startup() {
+  var canvas2d = document.getElementById("myCanvas");
+  ctx2d = canvas2d.getContext("2d");
+
   var canvas = document.getElementById("myGLCanvas");
 
-  //canvas.addEventListener("keypress", function(e) {
-  //  switch (e.code) {
-  //    case "Space":
-  //      recover = random = false;
-  //      break;
-  //  }
-  //  console.log(e.code);
-  //});
   canvas.addEventListener("mousedown", function(e) {
     dragging = true;
     click = true;
@@ -683,6 +778,7 @@ function startup() {
   canvas.addEventListener("mouseleave", function(e) {
     dragging = false;
     click = false;
+    mayCircle = null;
   });
   canvas.addEventListener("mousemove", function(e) {
     click = false;
@@ -763,17 +859,21 @@ function startup() {
   gl.uniform3fv(shaderProgram.uniformLightDirection, [-1, 1, -1]);
   gl.uniform4fv(shaderProgram.uniformAmbientColor, [0.01, 0.01, 0.01, 1.0]);
 
+  initVaribles();
   //shuffle();
 
   update();
+  draw2D();
 }
 
 function shuffle() {
-  for (var i = 0; i < 40; i++) { pushRecord(genRandomRotate()); }
+  for (var i = 0; i < 40; i++) {
+    pushRecord(genRandomRotate());
+  }
 }
 
 function update() {
-  draw();
+  draw3D();
 
   requestAnimationFrame(update);
   autoMove();
@@ -813,10 +913,11 @@ function shuffleWards() {
 }
 
 function manualAnimate() {
-  if (++animeCursor >= 100) {
+  animeCursor += 2;
+  if (animeCursor >= 100) {
     pushRecord(currentRotate);
     currentRotate = null;
-    mayCircle = null;
+    //mayCircle = null;
     animeCursor = 0;
   }
 }

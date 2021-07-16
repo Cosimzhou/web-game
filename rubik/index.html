@@ -34,7 +34,7 @@
         vec3  invLight = normalize(invMMatrix *invVMatrix * invPMatrix * vec4(lightDirection, 0.0)).xyz;
         vec3  invEye   = normalize(invMMatrix *invVMatrix * invPMatrix * vec4(eyeDirection, 0.0)).xyz;
         vec3  halfLE   = normalize(invLight + invEye);
-        float diffuse  = clamp(dot(aVertexNormal, invLight), 0.0, 1.0);
+        float diffuse  = clamp(dot(aVertexNormal, invLight), 0.0, 0.9);
         float specular = pow(clamp(dot(aVertexNormal, halfLE), 0.0, 1.0), 50.0);
         vec4  light    = aVertexColor * vec4(vec3(diffuse), 1.0) + vec4(vec3(specular), 1.0);
         vColor         = light + ambientColor;
@@ -56,9 +56,10 @@
   <script type="text/javascript" src="./draw-cube.js"></script>
 </head>
 
-<body onload="startup();" style="background-color:#7f7f7f">
+<body onload="startup();" style="background-color:#777">
   <center>
     <canvas id="myGLCanvas" width="500" height="500"></canvas><br>
+    <canvas id="myCanvas" width="500" height="100"></canvas><br>
     <input type="button" value="恢复" onclick="recoverToggle()">
     <input type="button" value="游转" onclick="hoverToggle()">
     <input type="button" value="打乱" onclick="randomToggle()"><br>
