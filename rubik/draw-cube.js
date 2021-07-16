@@ -374,9 +374,9 @@ function draw3D() {
   uploadProjectionMatrixToShader();
 
   // 初始化模型视图矩阵
-  var eyePoint = [radius * Math.cos(perspectiveAngle),
+  var eyePoint = [radius * Math.sin(perspectiveAngle),
                   8 * Math.sin(perspectiveAngle / 3),
-                  radius * Math.sin(perspectiveAngle)];
+                  radius * Math.cos(perspectiveAngle)];
   gl.uniform3fv(shaderProgram.uniformEyeDirection, eyePoint);
 
   glMatrix.mat4.identity(viewMatrix);
@@ -556,8 +556,8 @@ function focusView(f) {
 
   switch (f) {
     case 0:
-      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, -0.8379118333508581, [0,
-        -1, 1]);
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, -0.8379118333508581,
+        xyzAxis[2]);
       break;
     case 1:
       glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A90 / 2, xyzAxis[2]);
@@ -571,19 +571,19 @@ function focusASide(f) {
   glMatrix.mat4.identity(rotateMatrix);
   switch (f) {
     case 1: //
-      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A180, xyzAxis[3]);
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A180, xyzAxis[2]);
       break;
     case 2: //
-      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A90, xyzAxis[3]);
-      break;
-    case 3: //
-      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A270, xyzAxis[3]);
-      break;
-    case 4: //
       glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A90, xyzAxis[2]);
       break;
-    case 5: //
+    case 3: //
       glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A270, xyzAxis[2]);
+      break;
+    case 4: //
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A90, xyzAxis[1]);
+      break;
+    case 5: //
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A270, xyzAxis[1]);
       break;
     default:
       break;
@@ -678,15 +678,23 @@ function projectSubCube2D(cubeId) {
   // draw ...
   for (var axis = 0, s, x, y, c; axis < 3; axis++) {
     if (Math.abs(pos[axis]) < 1) continue;
-    s = axis << 1;
-    x = pos[axis == 0 ? 1 : 0] + 1;
-    y = 1 - pos[axis == 2 ? 1 : 2];
+    if (axis != 1) {
+      s = 2 - axis;
+      x = 1 + pos[axis == 0 ? 2 : 0] * Math.sign(pos[axis]);
+      y = 1 - pos[1];
+    } else {
+      // Up or down
+      s = 4;
+      x = 1 + pos[0];
+      y = 1 + pos[2];
+    }
 
     if (pos[axis] == 1) {
       c = findSide(axis, 1);
+      if (axis == 0) s = 3;
     } else if (pos[axis] == -1) {
-      s++;
       c = findSide(axis, -1);
+      if (axis) s++;
     }
 
     sideColorMap[s][x][y] = c;
@@ -760,6 +768,14 @@ function initVaribles() {
 
 function startup() {
   var canvas2d = document.getElementById("myCanvas");
+  canvas2d.addEventListener("click", function(e) {
+    var x = e.offsetX - c2dMargin;
+    var unit = c2dSide + c2dMargin;
+    var side = parseInt(x / unit);
+    if (0 <= side && side < 6 && x % unit <= c2dSide) {
+      focusASide(side);
+    }
+  });
   ctx2d = canvas2d.getContext("2d");
 
   var canvas = document.getElementById("myGLCanvas");
