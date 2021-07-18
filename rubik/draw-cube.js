@@ -1,5 +1,4 @@
-var gl;
-var ctx2d;
+var gl, ctx2d;
 var shaderProgram;
 var circleVertexBuffer, circleNormalBuffer, circleVertexIndexBuffer,
   circleColorBuffer;
@@ -10,15 +9,53 @@ var travel = 0;
 var modeRotate = 0; // recover: 1, random: 2
 var dragging = false,
   click = false;
+var oddOrder = true;
 var cubeOrderNum = 3;
 var cubeOrderHalf = 1;
+var surfaceV = 1;
 var c2dMargin = (6 * 100 - 500) / 5,
   c2dSide = 100 - 2 * c2dMargin;
-var c2dPixelLen = c2dSide / cubeOrderNum;
+var c2dPixelLen;
 
-var mayCircle = null;
-var moveCount = 0;
-var currentRotate = {};
+var currentRotate;
+var mayCircle;
+var moveCount;
+var perspectiveAngle;
+var animeCursor;
+var radius = 15;
+
+var R = 2.1;
+var A90 = Math.PI / 2,
+  A180 = Math.PI,
+  A270 = -Math.PI / 2,
+  A48 = 0.8379118333508581;
+
+/**
+ *
+ *  The indices of each side on cube surface are as following.
+ *
+ *                      4 BACK
+ *                     /
+ *              ______________
+ *             /             /|
+ *            /      3      / |
+ *           /      UP     /  |
+ *          /_____________/   |
+ *   5 <--- |             | --+--> 2 RIGHT
+ *   LEFT   |             |   |
+ *          |      1      |   /
+ *          |    FRONT    |  /
+ *          |             | /
+ *          |_____________|/
+ *                 |
+ *                 V
+ *                 6 Down
+ *
+ *  The subscript of the side vertex buffer in the side array equals the side
+ *  index minus one.
+ *  The subscript of the side color in the color array equals the side index.
+ *
+ */
 
 var cubeVertexNormal = [
   [0.0, 0.0, 1.0],
@@ -69,78 +106,32 @@ var cubeVertexPosition = [
 
 var colorArray = [
     [0.0, 0.0, 0.0, 1.0], // Black
-    [1.0, 1.0, 1.0, 1.0], // White
-    [1.0, 0.45, 0.0, 1.0], // Orange
-    [0.0, 1.0, 0.0, 1.0], // Green
-    [1.0, 0.0, 0.0, 1.0], // Red
     [0.0, 0.0, 1.0, 1.0], // Blue
-    [1.0, 0.9, 0.5, 1.0] // Yellow
+    [1.0, 0.0, 0.0, 1.0], // Red
+    [1.0, 0.9, 0.5, 1.0], // Yellow
+    [0.0, 1.0, 0.0, 1.0], // Green
+    [1.0, 0.45, 0.0, 1.0], // Orange
+    [1.0, 1.0, 1.0, 1.0], // White
 ];
 
 var colorArray2D = [
     "#000", // Black
-    "#fff", // White
-    "#f60", // Orange
-    "#0f0", // Green
-    "#f00", // Red
     "#00f", // Blue
-    "#fe8" // Yellow
+    "#f00", // Red
+    "#fe8", // Yellow
+    "#0f0", // Green
+    "#f60", // Orange
+    "#fff", // White
+    "#0aa", // Dark Cyan
 ];
-
-var sideColorMap = [
-  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-  [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-  [[0, 0, 0], [0, 0, 0], [0, 0, 0]], ];
 
 var xyzAxis = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, -1, 0]];
-var R = 2.1;
-var A90 = Math.PI / 2,
-  A180 = Math.PI,
-  A270 = -Math.PI / 2;
 
-// xyzAxis, angle, vector, color
-var transformInfos = [
-    // Front side
-    [0, 0, [0, 0, R], [1]],
-    [0, 0, [R, 0, R], [1, 2]],
-    [3, A90, [R, 0, R], [1, 3]],
-    [3, A180, [R, 0, R], [1, 4]],
-    [3, A270, [R, 0, R], [1, 5]],
-    [0, 0, [R, R, R], [1, 2, 3]],
-    [3, A90, [R, R, R], [1, 3, 4]],
-    [3, A180, [R, R, R], [1, 4, 5]],
-    [3, A270, [R, R, R], [1, 5, 2]],
+var sideColorMap;
+var layerIndices = [-1, 0, 1];
 
-    // Back side
-    [1, A180, [0, 0, R], [6]],
-    [1, A180, [R, 0, R], [6, 2]],
-    [1, A180, [R, R, R], [6, 2, 5]],
-    [1, A180, [0, R, R], [6, 0, 5]], //*
-    [1, A270, [0, R, R], [3, 0, 6]], //*
-    [1, A270, [R, R, R], [3, 2, 6]],
-    [2, A180, [R, R, R], [6, 4, 3]],
-    [2, A180, [R, 0, R], [6, 4]],
-    [4, A180, [R, R, R], [6, 5, 4]],
-
-    // Right
-    [2, A90, [0, 0, R], [2]],
-    [2, A90, [0, R, R], [2, 0, 3]], //*
-    [3, A180, [R, R, 0], [0, 4, 5]], //*
-
-    // Left
-    [2, A270, [0, 0, R], [4]],
-    [2, A270, [0, R, R], [4, 0, 3]], //*
-    [3, A270, [R, R, 0], [0, 5, 2]], //*
-
-    // Top
-    [1, A270, [0, 0, R], [3]],
-    [1, A90, [0, 0, R], [5]],
-];
-
-var cubeRotateTrace = {};
+var transformInfos;
+var cubeRotateTrace;
 
 var modelMatrix;
 var invModelMatrix;
@@ -149,6 +140,7 @@ var invViewMatrix;
 var invProjMatrix;
 var projectionMatrix;
 var modelMatrixStack;
+
 
 function createGLContext(canvas) {
   var names = ["webgl", "experimental-webgl"];
@@ -224,8 +216,6 @@ function setupShaders() {
     'eyeDirection');
   shaderProgram.uniformAmbientColor = gl.getUniformLocation(shaderProgram,
     'ambientColor');
-
-
 }
 
 function loadShaderFromDOM(id) {
@@ -311,12 +301,12 @@ function setupCircleBuffer() {
   var colors = [];
   var indices = [];
   var normals = [];
+  var dR = 2,
+    h = 0.1;
   var CAP = 36,
-    R1 = 5,
-    R2 = 7;
-  var h = 0.1;
-  var dR = R2 - R1,
-    rR = h * (Math.sqrt(h * h + dR * dR) - h) / dR;
+    R1 = cubeOrderNum * 1.6,
+    R2 = R1 + dR;
+  var rR = h * (Math.sqrt(h * h + dR * dR) - h) / dR;
   var uang = 2 * Math.PI / CAP;
   var pidx = 0;
   for (var i = 0; i < CAP; ++i) {
@@ -350,16 +340,25 @@ function setupCircleBuffer() {
   indices.push(pidx + 2, pidx, 2);
   indices.push(2, pidx, 0);
 
+  if (circleVertexBuffer) {
+    gl.deleteBuffer(circleVertexBuffer);
+  }
+  if (circleNormalBuffer) {
+    gl.deleteBuffer(circleNormalBuffer);
+  }
+  if (circleColorBuffer) {
+    gl.deleteBuffer(circleColorBuffer);
+  }
   circleVertexBuffer = transformArrayToBuffer(array, 3);
   circleNormalBuffer = transformArrayToBuffer(normals, 3);
   circleColorBuffer = transformArrayToBuffer(colors, 4);
 
+  if (circleVertexIndexBuffer) {
+    gl.deleteBuffer(circleVertexIndexBuffer);
+  }
   circleVertexIndexBuffer = transformIndexBuffer(indices);
 }
 
-var perspectiveAngle = 0,
-  radius = 15;
-var animeCursor = 0;
 
 function draw3D() {
   gl.clearColor(0.4, 0.4, 0.4, 1);
@@ -385,7 +384,6 @@ function draw3D() {
   uploadViewMatrixToShader();
 
   glMatrix.mat4.identity(modelMatrix);
-  //glMatrix.mat4.multiply(modelMatrix, modelMatrix, rotateMatrix);
   for (var tfi in transformInfos) {
     var tf = transformInfos[tfi];
     pushModelMatrix();
@@ -412,7 +410,6 @@ function draw3D() {
 
     uploadModelMatrixToShader();
     drawCube(tf[3]);
-    projectSubCube2D(tfi);
     popModelMatrix();
   }
 
@@ -469,6 +466,26 @@ function popModelMatrix() {
   modelMatrix = modelMatrixStack.pop();
 }
 
+function project2D() {
+  var matrix = glMatrix.mat4.create();
+  for (var tfi in transformInfos) {
+    var tf = transformInfos[tfi];
+    glMatrix.mat4.identity(matrix);
+
+    var trace = cubeRotateTrace[tfi];
+    if (trace) {
+      for (var i = trace.length - 1, rot; rot = trace[i]; i--) {
+        glMatrix.mat4.rotate(matrix, matrix, rot[0], xyzAxis[rot[1]]);
+      }
+    }
+
+    glMatrix.mat4.rotate(matrix, matrix, tf[1], xyzAxis[tf[0]]);
+    glMatrix.mat4.translate(matrix, matrix, tf[2]);
+
+    projectSubCube2D(tfi, matrix);
+  }
+}
+
 function findLayer(axis, lyr) {
   var m = glMatrix.mat4.create();
   var result = [];
@@ -504,11 +521,11 @@ var lastLyr = NaN,
   lastAxis = -1,
   lastAng = 0;
 
-function genRandomRotate() {
+function genRandomRotate3() {
   var axisIdx, lyr, differAng = false;
   while (true) {
     axisIdx = parseInt(Math.random() * 3);
-    lyr = parseInt(Math.random() * cubeOrderNum - cubeOrderHalf);
+    lyr = layerIndices[parseInt(Math.random() * cubeOrderNum)];
     if (axisIdx != lastAxis) break;
     if (lyr != lastLyr) { differAng = true; break; }
   }
@@ -524,6 +541,25 @@ function genRandomRotate() {
   lastAng = ang;
   ang *= A90;
 
+  console.log("random move:", ang, axisIdx, moveCount, lyr);
+  return fillMove(ang, axisIdx, moveCount, lyr);
+}
+
+function genRandomRotate() {
+  var axisIdx, lyr;
+  while (true) {
+    axisIdx = parseInt(Math.random() * 3);
+    lyr = layerIndices[parseInt(Math.random() * cubeOrderNum)];
+    if (axisIdx != lastAxis || lyr != lastLyr) break;
+  }
+  lastLyr = lyr;
+  lastAxis = axisIdx;
+
+  var ang = parseInt(Math.random() * 3);
+  if (ang == 0) ang--;
+  ang *= A90;
+
+  console.log("random move:", ang, axisIdx, moveCount, lyr);
   return fillMove(ang, axisIdx, moveCount, lyr);
 }
 
@@ -546,21 +582,27 @@ function pushRecord(act) {
   }
 
   moveCount++;
-  draw2D();
 }
 
 function focusView(f) {
   perspectiveAngle = 0;
   travel = false;
   glMatrix.mat4.identity(rotateMatrix);
-
   switch (f) {
     case 0:
-      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, -0.8379118333508581,
-        xyzAxis[2]);
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A48, xyzAxis[4]);
       break;
-    case 1:
+    case 1: // Left front
       glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A90 / 2, xyzAxis[2]);
+      break;
+    case 2: // Up front
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, -A90 / 2, xyzAxis[1]);
+      break;
+    case 3: // Right front
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, -A90 / 2, xyzAxis[2]);
+      break;
+    case 4: // Down front
+      glMatrix.mat4.rotate(rotateMatrix, rotateMatrix, A90 / 2, xyzAxis[1]);
       break;
   }
 }
@@ -656,11 +698,24 @@ function drawCircle() {
     .UNSIGNED_SHORT, 0);
 }
 
-function projectSubCube2D(cubeId) {
-  var pos = modelMatrix.slice(12, 15).map(function(x) {
+/**
+ *  The index of the side in 3D space to 2D space conversion.
+ *
+ *     Surface | Axis | 3D index | 2D index
+ *    ---------+------+----------+-----------
+ *     Front   |  3   |   1      |    1
+ *     Back    |  3   |   4      |    2
+ *     Left    |  1   |   5      |    3
+ *     Right   |  1   |   2      |    4
+ *     Up      |  2   |   3      |    5
+ *     Down    |  2   |   6      |    6
+ */
+
+function projectSubCube2D(cubeId, matrix) {
+  var pos = matrix.slice(12, 15).map(function(x) {
     return parseInt(Math.round(x / R));
   });
-  var faceMat = modelMatrix.slice(0, 12).map(function(x) {
+  var faceMat = matrix.slice(0, 12).map(function(x) {
     return parseInt(Math.round(x));
   });
   var transInfo = transformInfos[cubeId];
@@ -669,32 +724,55 @@ function projectSubCube2D(cubeId) {
     val = Math.sign(val);
     for (var i = 0; i < 3; i++) {
       if (val == faceMat[i * 4 + axis]) {
-        return transInfo[3][(i + 1) % 3];
+        var n = (i + 1) % 3;
+        if (transInfo[3].length >= n) {
+          return transInfo[3][n];
+        } else
+          return 0;
       }
     }
     return 0;
   }
 
-  // draw ...
   for (var axis = 0, s, x, y, c; axis < 3; axis++) {
-    if (Math.abs(pos[axis]) < 1) continue;
-    if (axis != 1) {
-      s = 2 - axis;
-      x = 1 + pos[axis == 0 ? 2 : 0] * Math.sign(pos[axis]);
-      y = 1 - pos[1];
-    } else {
-      // Up or down
-      s = 4;
-      x = 1 + pos[0];
-      y = 1 + pos[2];
+    var vaxis = pos[axis];
+    if (Math.abs(vaxis) < surfaceV) continue;
+    var saxis = Math.sign(vaxis);
+
+    // Get side
+    s = (axis + 1) % 3 << 1;
+    if (vaxis > 0) {
+      if (axis == 0) s = 3;
+    } else if (vaxis < 0) {
+      if (axis) s++;
     }
 
-    if (pos[axis] == 1) {
-      c = findSide(axis, 1);
-      if (axis == 0) s = 3;
-    } else if (pos[axis] == -1) {
-      c = findSide(axis, -1);
-      if (axis) s++;
+    // Get color
+    c = findSide(axis, vaxis);
+
+    // Get x,y at certain side
+    if (axis == 0) {
+      // Left or right
+      x = -pos[2] * saxis;
+      y = -pos[1];
+    } else if (axis == 2) {
+      // front or back
+      x = pos[0] * saxis;
+      y = -pos[1];
+    } else {
+      // Up or down
+      x = pos[0];
+      y = pos[2] * saxis;
+    }
+
+    if (oddOrder) {
+      x = parseInt(x + cubeOrderHalf);
+      y = parseInt(y + cubeOrderHalf);
+    } else {
+      if (x < 0) x--;
+      if (y < 0) y--;
+      x = parseInt(x / 2 + cubeOrderHalf);
+      y = parseInt(y / 2 + cubeOrderHalf);
     }
 
     sideColorMap[s][x][y] = c;
@@ -716,14 +794,77 @@ function drawPixel(x, y, c) {
   ctx2d.closePath();
 }
 
+/***********************************************
+ *
+ *  axis | side | horizon | vertical | reverse
+ * ------+------+---------+----------+---------
+ *  0 x  |  0   |         |    1     |
+ *       |  1   |         |    1     |    1
+ *       |  4   |         |    1     |
+ *       |  5   |         |    1     |
+ *  1 y  |  0   |    1    |          |    1
+ *       |  1   |    1    |          |    1
+ *       |  2   |    1    |          |    1
+ *       |  3   |    1    |          |    1
+ *  2 z  |  2   |         |    1     |
+ *       |  3   |         |    1     |    1
+ *       |  4   |    1    |          |
+ *       |  5   |    1    |          |    1
+ *
+ ***********************************************/
+function drawBoldCircle2D(side, axis, layer) {
+  var xy = (axis == 1) || (axis == 2 && side > 3);
+  var asx = (xy ? 1 : 0) + (side % 2) * 2 + axis * 4;
+  var reverse = axis == 1 || (side == 1 && axis == 0) || ((
+    side == 3 || side == 5) && axis == 2);
+  if (reverse) {
+    layer = cubeOrderNum - layer - 1;
+  }
+  var l = layer + 0.45;
+
+  ctx2d.beginPath();
+  if (xy) {
+    ctx2d.moveTo(-0.3, l);
+    ctx2d.lineTo(cubeOrderNum + 0.3, l);
+  } else {
+    ctx2d.moveTo(l, -0.3);
+    ctx2d.lineTo(l, cubeOrderNum + 0.3);
+  }
+  ctx2d.lineWidth = 1.2;
+  ctx2d.strokeStyle = colorArray2D[7];
+  ctx2d.stroke();
+  ctx2d.closePath();
+}
+
 function draw2D() {
+  project2D();
   ctx2d.setTransform(1, 0, 0, 1, 0, 0);
   ctx2d.fillStyle = "#777";
   ctx2d.clearRect(0, 0, 500, 100);
 
+  var boldSides = new Set();
+  var boldLayer, boldAxis;
+  if (currentRotate && currentRotate.meta) {
+    boldAxis = currentRotate.meta[1];
+    boldLayer = layerIndices.indexOf(currentRotate.meta[3]);
+  } else if (mayCircle) {
+    boldAxis = mayCircle[1];
+    boldLayer = layerIndices.indexOf(mayCircle[3]);
+  }
+
+  if (boldAxis == 0) {
+    boldSides = new Set([0, 1, 4, 5]);
+  } else if (boldAxis == 1) {
+    boldSides = new Set([0, 1, 2, 3]);
+  } else if (boldAxis == 2) {
+    boldSides = new Set([4, 5, 2, 3]);
+  }
+
   for (var s = 0; s < 6; s++) {
     ctx2d.save();
     setPixelSide(s);
+    if (boldSides.has(s)) drawBoldCircle2D(s, boldAxis, boldLayer);
+
     for (var x = 0; x < cubeOrderNum; x++)
       for (var y = 0; y < cubeOrderNum; y++) {
         drawPixel(x, y, sideColorMap[s][x][y]);
@@ -750,7 +891,45 @@ function enterManual() {
   mayCircle = null;
 }
 
+function changeOrder(n) {
+  if (n == cubeOrderNum || n > 7) return;
+  cubeOrderNum = n;
+  oddOrder = cubeOrderNum % 2;
+  cubeOrderHalf = n >> 1;
+  radius = 5 * n;
+
+
+  layerIndices = [];
+  if (oddOrder) {
+    R = 2.1;
+    surfaceV = cubeOrderHalf;
+    for (var i = -surfaceV; i <= surfaceV; ++i)
+      layerIndices.push(i);
+  } else {
+    R = 1.025;
+    surfaceV = 2 * cubeOrderHalf - 1;
+    for (var i = -surfaceV; i <= surfaceV; i += 2)
+      layerIndices.push(i);
+  }
+
+  initVaribles();
+  draw2D();
+}
+
 function initVaribles() {
+  c2dPixelLen = c2dSide / cubeOrderNum;
+
+  initSubCubeTransform();
+
+  // init sideColorMap
+  sideColorMap = [];
+  for (var s = 0; s < 6; s++) {
+    sideColorMap.push([]);
+    for (var i = 0; i < cubeOrderNum; i++) {
+      sideColorMap[s].push(new Int8Array(cubeOrderNum));
+    }
+  }
+
   // 初始化矩阵
   modelMatrix = glMatrix.mat4.create();
   viewMatrix = glMatrix.mat4.create();
@@ -764,6 +943,70 @@ function initVaribles() {
   glMatrix.mat4.identity(rotateMatrix);
 
   modelMatrixStack = [];
+  cubeRotateTrace = {};
+  currentRotate = {};
+
+  moveCount = 0;
+  perspectiveAngle = 0;
+  animeCursor = 0;
+  setupCircleBuffer();
+}
+
+function initSubCubeTransform() {
+  transformInfos = [];
+  var V = surfaceV * R;
+  // Vertex cubes
+  transformInfos.push(
+    // Front side
+    [0, 0, [V, V, V], [1, 2, 3]],
+    [3, A90, [V, V, V], [1, 3, 5]],
+    [3, A180, [V, V, V], [1, 5, 6]],
+    [3, A270, [V, V, V], [1, 6, 2]],
+    // Back side
+    [2, A90, [V, V, V], [2, 4, 3]],
+    [2, A180, [V, V, V], [4, 5, 3]],
+    [1, A180, [V, V, V], [4, 2, 6]],
+    [4, A180, [V, V, V], [4, 6, 5]],
+  );
+
+  // Edge cubes
+  var edgeCubeNum = cubeOrderNum - 2;
+  for (var i, n = 0; n < edgeCubeNum; ++n) {
+    i = layerIndices[n + 1] * R;
+    transformInfos.push(
+      // At front side
+      [0, 0, [V, i, V], [1, 2]], // right
+      [3, A90, [V, i, V], [1, 3]], // up
+      [3, A180, [V, i, V], [1, 5]], // left
+      [3, A270, [V, i, V], [1, 6]], // down
+      // At back side
+      [1, A180, [V, i, V], [4, 2]], // left
+      [1, A180, [i, V, V], [4, 0, 6]], // down*
+      [1, A270, [i, V, V], [3, 0, 4]], // up*
+      [2, A180, [V, i, V], [4, 5]], // right
+      // At left side
+      [2, A90, [i, V, V], [2, 0, 3]], // up*
+      [3, A180, [V, V, i], [0, 5, 6]], // down*
+      // At right side
+      [2, A270, [i, V, V], [5, 0, 3]], // up*
+      [3, A270, [V, V, i], [0, 6, 2]], // down*
+    );
+  }
+
+  for (var i, x = 0; x < edgeCubeNum; ++x) {
+    i = layerIndices[x + 1] * R;
+    for (var j, y = 0; y < edgeCubeNum; ++y) {
+      j = layerIndices[y + 1] * R;
+      transformInfos.push(
+        [0, 0, [i, j, V], [1]], // Front side
+        [1, A180, [i, j, V], [4]], // Back side
+        [2, A270, [i, j, V], [5]], // Left side
+        [2, A90, [i, j, V], [2]], // Right side
+        [1, A270, [i, j, V], [3]], // Top side
+        [1, A90, [i, j, V], [6]], // Down side
+      );
+    }
+  }
 }
 
 function startup() {
@@ -779,7 +1022,6 @@ function startup() {
   ctx2d = canvas2d.getContext("2d");
 
   var canvas = document.getElementById("myGLCanvas");
-
   canvas.addEventListener("mousedown", function(e) {
     dragging = true;
     click = true;
@@ -813,7 +1055,8 @@ function startup() {
     } else if (dist > 3) {
       // Select circle candidate
       var axisIdx = 0,
-        layer = 0;
+        layerDiff;
+      var layer = 0;
       var vec = glMatrix.vec4.create();
       vec[0] = e.movementX, vec[1] = -e.movementY;
       glMatrix.vec4.normalize(vec, vec);
@@ -822,22 +1065,30 @@ function startup() {
         if (Math.abs(vec[i]) > mv) {
           axisIdx = i;
           mv = Math.abs(vec[i]);
-          layer = parseInt(vec[axisIdx] / 0.51);
+          layerDiff = Math.sign(vec[i]);
+          layer = layerDiff < 0 ? 0 : cubeOrderNum - 1;
         }
       }
 
       if (mayCircle) {
         if (mayCircle[1] == axisIdx) {
-          if (mayCircle[4] < 5) { mayCircle[4]++; return; }
-          var diff = Math.sign(layer);
-          layer = mayCircle[3] + diff;
-          if (layer > 1) layer = 1;
-          else if (layer < -1) layer = -1;
-          mayCircle = [A90, axisIdx, moveCount, layer, 0];
+          if (mayCircle[4] < 5) {
+            mayCircle[4]++;
+            return;
+          }
+          layer = mayCircle[5] + layerDiff;
+          if (layer >= cubeOrderNum) layer = cubeOrderNum - 1;
+          else if (layer < 0) layer = 0;
+          mayCircle = [A90, axisIdx, moveCount, layerIndices[layer], 0,
+            layer];
+          draw2D();
           return;
         }
       }
-      mayCircle = [A90, axisIdx, moveCount, layer, 0];
+
+
+      mayCircle = [A90, axisIdx, moveCount, layerIndices[layer], 0, layer];
+      draw2D();
     }
   });
   canvas.addEventListener("mousewheel", function(e) {
@@ -846,8 +1097,11 @@ function startup() {
     }
     //
     if (currentRotate == null) {
-      if (e.deltaY < 0) mayCircle[0] *= -1;
-      currentRotate = fillMove(...mayCircle);
+      if (mayCircle) {
+        if (e.deltaY < 0) mayCircle[0] *= -1;
+        currentRotate = fillMove(...mayCircle);
+      }
+      mayCircle = null;
     } else {
       if (Math.sign(currentRotate.meta[0]) == Math.sign(e.deltaY)) {
         if (++animeCursor == 100) {
@@ -855,6 +1109,7 @@ function startup() {
           currentRotate = null;
           mayCircle = null;
           animeCursor = 0;
+          draw2D();
         }
       } else {
         if (--animeCursor <= 0) {
@@ -869,14 +1124,13 @@ function startup() {
   gl = createGLContext(canvas);
   setupShaders();
   setupCubeBuffers();
-  setupCircleBuffer();
+
   gl.enable(gl.DEPTH_TEST);
 
   gl.uniform3fv(shaderProgram.uniformLightDirection, [-1, 1, -1]);
   gl.uniform4fv(shaderProgram.uniformAmbientColor, [0.01, 0.01, 0.01, 1.0]);
 
   initVaribles();
-  //shuffle();
 
   update();
   draw2D();
@@ -886,6 +1140,7 @@ function shuffle() {
   for (var i = 0; i < 40; i++) {
     pushRecord(genRandomRotate());
   }
+  draw2D();
 }
 
 function update() {
@@ -917,6 +1172,7 @@ function recoverWards() {
     } else {
       enterManual();
     }
+    draw2D();
   }
 }
 
@@ -925,6 +1181,7 @@ function shuffleWards() {
     pushRecord(currentRotate);
     currentRotate = genRandomRotate();
     animeCursor = 0;
+    draw2D();
   }
 }
 
@@ -933,7 +1190,7 @@ function manualAnimate() {
   if (animeCursor >= 100) {
     pushRecord(currentRotate);
     currentRotate = null;
-    //mayCircle = null;
     animeCursor = 0;
+    draw2D();
   }
 }
