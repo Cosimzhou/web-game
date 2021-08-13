@@ -825,10 +825,10 @@ function drawBoldCircle2D(side, axis, layer) {
   ctx2d.beginPath();
   if (xy) {
     ctx2d.moveTo(-0.3, l);
-    ctx2d.lineTo(cubeOrderNum + 0.3, l);
+    ctx2d.lineTo(cubeOrderNum + 0.2, l);
   } else {
     ctx2d.moveTo(l, -0.3);
-    ctx2d.lineTo(l, cubeOrderNum + 0.3);
+    ctx2d.lineTo(l, cubeOrderNum + 0.2);
   }
   ctx2d.lineWidth = 1.2;
   ctx2d.strokeStyle = colorArray2D[7];
