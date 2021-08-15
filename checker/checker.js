@@ -2,7 +2,9 @@
   var exports = window || {};
 
 
+  var PJ_MAVSCORE = 0x7FFFFFFF;
   var kTwoPI = 2 * Math.PI;
+  var SQRT3_2 = Math.sqrt(3) / 2;
   var kCCKR_NUM = 121;
   var kCCKR_LEN = kCCKR_NUM + 1;
 
@@ -116,6 +118,8 @@
 
   function norm2x(x, y) { return x + (y / 2) - 5; }
 
+  function norm2y(y) { return y * SQRT3_2; }
+
 
 
   function Board() {
@@ -126,14 +130,44 @@
     b.board = Uint8Array.from(this.board);
     return b;
   }
+  Board.prototype.move = function(o, d) {
+    var chk = this.board[o];
+    if (chk && !this.board[d]) {
+      this.board[d] = chk;
+      this.board[o] = 0;
+      return true;
+    }
+    return false;
+  }
+  Board.prototype.unmove = function(o, d) {
+    var chk = this.board[d];
+    if (chk && !this.board[o]) {
+      this.board[o] = chk;
+      this.board[d] = 0;
+      return true;
+    }
+    return false;
+  }
   Board.prototype.put = function(array) {
     for (var elem of array) {
       var txt = cckr_nest_indices[elem - 1];
       for (var i = 0; i < txt.length; ++i) {
         this.board[txt.charCodeAt(i)] = elem;
-        console.log(in2x(txt.charCodeAt(i)), in2y(txt.charCodeAt(i)));
       }
     }
+  }
+  Board.prototype.allMoves = function(side) {
+    var moves = [];
+    for (var i = 1; i < kCCKR_LEN; ++i) {
+      if (this.board[i] == side) {
+        var poss = this.moveForPit(i);
+        poss.forEach(function(x) {
+          moves.push([i, x]);
+        });
+      }
+    }
+
+    return moves;
   }
   Board.prototype.moveForPit = function(idx) {
     if (this.board[idx] == 0) return;
@@ -176,11 +210,76 @@
     return;
   }
 
+  Board.prototype.searchPath = function(start, dest) {
+    if (!start || !dest || !this.board[start] || this.board[dest]) return;
+
+    var visit = new Set();
+    var path = [];
+    for (var d = 0; d < 6; ++d) {
+      var nexti = cckr_table_next_move[d].charCodeAt(start);
+      if (nexti == dest) {
+        return [dest];
+      }
+
+      if (nexti && this.board[nexti]) {
+        var nextii = cckr_table_next_move[d].charCodeAt(nexti);
+        if (nextii && !this.board[nextii]) {
+          if (nextii == dest) {
+            path.push(dest);
+            return path;
+          }
+
+          if (!visit.has(nextii)) {
+            visit.add(nextii);
+            path.push(nextii);
+
+            var ret_path = this._jumpPath(nextii, dest, path, visit);
+            if (ret_path) return ret_path;
+
+            path.pop();
+          }
+        }
+      }
+    }
+
+    return;
+  }
+
+  Board.prototype._jumpPath = function(start, dest, path, visit) {
+    if (!start || !dest || this.board[start] || this.board[dest]) return;
+
+    for (var d = 0; d < 6; ++d) {
+      var nexti = cckr_table_next_move[d].charCodeAt(start);
+      if (nexti && this.board[nexti]) {
+        var nextii = cckr_table_next_move[d].charCodeAt(nexti);
+        if (nextii && !this.board[nextii]) {
+          if (nextii == dest) {
+            path.push(dest);
+            return path;
+          }
+
+          if (!visit.has(nextii)) {
+            visit.add(nextii);
+            path.push(nextii);
+
+            var ret_path = this._jumpPath(nextii, dest, path, visit);
+            if (ret_path) return ret_path;
+
+            path.pop();
+          }
+        }
+      }
+
+    }
+
+    return;
+  }
+
   function Game() {
     this.base = new Board();
     this.turn = 0;
-    this.side = 1;
-    this.participates = [1, 4];
+    this.side = 4;
+    this.participates = [4, 1];
     this.base.put(this.participates);
   }
   Game.prototype.turnSide = function() {
@@ -188,28 +287,239 @@
     if (this.turn >= this.participates.length) this.turn = 0;
 
     this.side = this.participates[this.turn];
+
+  }
+  Game.prototype.getSide = function(t) {
+    return this.participates[t % this.participates.length];
   }
 
-  function GameAI(game) {
+  function GameAI(game, side) {
     this.game = game;
     this.base = game.base.clone();
 
+    this.depth = 3;
+    this.side = side;
     this.ps = 0;
   }
-  GameAI.prototype.getMen = function() {
-    var pit = [];
+  //GameAI.prototype.getMen = function() {
+  //  var pit = [];
+  //  for (var i = 1; i < kCCKR_LEN; ++i) {
+  //    var chk = this.base.board[i];
+  //    if (chk) {
+  //      //if
+  //    }
+  //  }
+  //  return pit;
+  //}
+  GameAI.prototype.isGameWon = function(side) {
+    var miny = {};
     for (var i = 1; i < kCCKR_LEN; ++i) {
       var chk = this.base.board[i];
-      if (chk) {
-        //if
-
+      if (chk == side) {
+        if (miny[chk] == null) {
+          miny[chk] = 20;
+        }
+        miny[chk] = Math.min(miny[chk], in2y(i, chk - 1));
       }
     }
 
-    return pit;
+    for (var side in miny) {
+      if (miny[side] = 13) {
+        return side;
+      }
+    }
+
+    return null;
   }
 
-  GameAI.prototype.test = function() {}
+  GameAI.prototype.search = function(turn) {
+    //this.test(turn, this.depth);
+
+    var side = this.game.getSide(turn);
+    this.searchSingle(side, this.depth);
+
+    var bmv = this.best_move
+    console.log(this.best_move);
+
+    var path = this.base.searchPath(...bmv);
+    console.log(path);
+    return [bmv, path];
+    //this.game.base.move(...bmv);
+    //this.game.turnSide();
+  }
+
+  GameAI.prototype.test = function(turn, level) {
+    var side = this.game.getSide(turn);
+    if (level <= 0) {
+      //return this.evaluate(side);
+      return this.evalSingle(side);
+    }
+
+    var min_val = PJ_MAVSCORE;
+    var moves = this.base.allMoves(side);
+    for (var mv of moves) {
+      var chk = this.base.board[mv[0]];
+      // Move
+      this.base.board[mv[0]] = 0;
+      this.base.board[mv[1]] = chk;
+
+      // Search
+      var score = -this.test(turn + 1, level - 1);
+      if (score < min_val) {
+        score = min_val;
+        if (level == this.depth) {
+          this.best_move = mv;
+        }
+      }
+
+      // Undo
+      this.base.board[mv[1]] = 0;
+      this.base.board[mv[0]] = chk;
+    }
+
+    return score;
+  }
+
+  GameAI.prototype.evaluate = function(side) {
+    var score = {};
+    for (var i = 1; i < kCCKR_LEN; ++i) {
+      var chk = this.base.board[i];
+      if (chk) {
+        if (score[chk] == null) score[chk] = 0;
+        score[chk] += in2y(i, chk - 1);
+      }
+    }
+
+    var myscore = score[side];
+    var oppov = 0;
+    for (var v in score) {
+      if (v != side) {
+        v = score[v];
+        if (v > oppov) {
+          oppov = v;
+        }
+      }
+    }
+
+    return myscore - oppov;
+  }
+
+  GameAI.prototype.searchSingle = function(side, level) {
+    if (level <= 0) {
+      return this.evalSingle(side);
+    }
+    if (this.isGameWon()) {
+      return PJ_MAVSCORE + level;
+    }
+
+    var best_score = -PJ_MAVSCORE;
+    var moves = this.base.allMoves(side);
+    for (var mv of moves) {
+      // Move
+      this.base.move(...mv);
+
+      // Search
+      var score = this.searchSingle(side, level - 1);
+      if (score > best_score) {
+        best_score = score;
+        if (level == this.depth) {
+          this.best_move = mv;
+        }
+      }
+
+      // Undo
+      this.base.unmove(...mv);
+    }
+
+    return best_score;
+  }
+  GameAI.prototype.evalSingle = function(side) {
+    var score = 0;
+    var ymin = 20,
+      ymax = 0;
+    for (var i = 1, cnt = 10; i < kCCKR_LEN; ++i) {
+      var chk = this.base.board[i];
+      if (chk == side) {
+        var x = in2x(i, chk - 1);
+        var y = in2y(i, chk - 1);
+        x = norm2x(x, y);
+
+        if (y >= 13)
+          score += y + 80;
+        else
+          score += y * (5 - Math.abs(x - 6) / 3);
+
+        if (ymin > y) ymin = y;
+        if (ymax < y) ymax = y;
+
+        if (--cnt == 0) break;
+      }
+    }
+
+    return ymin == 13 ? Infinity : score * (ymax + (ymin + 2) * 90);
+  }
+
+  function Animate(ui, src, path) {
+    this.ui = ui;
+    this.path = path;
+    this.segIdx = 0;
+    this.idx = 0;
+    this.frame_num = 5;
+    this.dest = path[path.length - 1];
+    this.chkside = ui.game.base.board[src];
+    ui.game.base.board[src] = 0;
+
+    var x = in2x(src),
+      y = in2y(src);
+    x = norm2x(x, y), y = norm2y(y);
+
+    this.cur_x = this.from_x = x;
+    this.cur_y = this.from_y = y;
+
+    x = in2x(path[0]), y = in2y(path[0]);
+    x = norm2x(x, y), y = norm2y(y);
+    this.dest_x = x;
+    this.dest_y = y;
+
+    this.vx = (this.dest_x - this.from_x) / this.frame_num;
+    this.vy = (this.dest_y - this.from_y) / this.frame_num;
+
+
+    var anm = this;
+    this.interval = setInterval(function() {
+      if (++anm.idx >= anm.frame_num) {
+        if (++anm.segIdx < anm.path.length) {
+          anm.idx = 0;
+
+          anm.cur_x = anm.from_x = anm.dest_x;
+          anm.cur_y = anm.from_y = anm.dest_y;
+
+          var x = in2x(path[anm.segIdx]),
+            y = in2y(path[anm.segIdx]);
+          x = norm2x(x, y), y = norm2y(y);
+
+          anm.dest_x = x, anm.dest_y = y;
+
+          anm.vx = (anm.dest_x - anm.from_x) / anm.frame_num;
+          anm.vy = (anm.dest_y - anm.from_y) / anm.frame_num;
+
+          sound();
+        } else {
+          sound();
+          anm.ui.animate = null;
+          clearInterval(anm.interval);
+          anm.ui.game.base.board[anm.dest] = anm.chkside;
+          anm.ui.game.turnSide();
+        }
+      } else {
+        anm.cur_x = anm.from_x + anm.idx * anm.vx;
+        anm.cur_y = anm.from_y + anm.idx * anm.vy;
+      }
+      anm.ui.refresh();
+    }, 100);
+  }
+
+
 
   //
   function GameUI(canvas) {
@@ -218,16 +528,18 @@
     this.game = new Game();
     this.current_possible = null;
     this.movingObject = null;
+    this.animate = null;
 
     this.radius = 0.4;
     this.scale = 60;
     this.offsetX = 60;
-    this.offsetY = 100;
+    this.offsetY = 60;
     this.width = canvas.width;
     this.height = canvas.height;
 
     var ui = this;
     canvas.addEventListener("mousedown", function(e) {
+      if (ui.animate) return;
       var idx = ui.pointToIdx(e.offsetX, e.offsetY);
       if (idx && ui.game.base.board[idx] == ui.game.side) {
         ui.current_possible = ui.game.base.moveForPit(idx);
@@ -258,6 +570,8 @@
         if (ui.current_possible.has(idx)) {
           ui.game.base.board[idx] = ui.movingObject.clr;
           ui.game.turnSide();
+
+          idx = "good";
         } else {
           ui.game.base.board[ui.movingObject.src] = ui.movingObject.clr;
         }
@@ -265,6 +579,14 @@
         ui.movingObject = null;
         ui.current_possible = null;
         ui.refresh();
+
+        if (idx == "good") {
+          var ai = new GameAI(ui.game, ui.game.side);
+          var move = ai.search(ui.game.turn);
+          ui.animate = new Animate(ui, move[0][0], move[1]);
+          //ui.refresh();
+
+        }
       }
     });
     canvas.addEventListener("mousemove", function(e) {
@@ -277,9 +599,9 @@
   }
   GameUI.prototype.pointToIdx = function(px, py) {
     var x = parseInt((px - this.offsetX) * 2 / this.scale + .5) / 2;
-    var y = parseInt((py - this.offsetY) / this.scale + .5);
+    var y = parseInt((py - this.offsetY) / this.scale / SQRT3_2 + .5);
     x = parseInt(x + 5 - (y / 2));
-    console.log(x, y);
+
     return (x < 0 || y < 0 || x > 16 || y > 16) ? 0 : xy2i(x, y);
   }
 
@@ -288,10 +610,11 @@
 
     this._drawCheckermen();
     this._drawPossiblePits();
+    this._drawAnimate();
 
     this.drawMovingObject();
 
-    //this._drawCoordinate(4);
+    this._drawCoordinate(0);
   }
 
   GameUI.prototype._drawNestTriangles = function() {
@@ -301,13 +624,13 @@
       var x = in2x(idx),
         y = in2y(idx);
       this.ctx.beginPath();
-      this.ctx.moveTo(norm2x(x, y), y);
+      this.ctx.moveTo(norm2x(x, y), norm2y(y));
 
       for (var i = 0; i < 3; ++i) {
         idx = idxs.charCodeAt(i);
         x = in2x(idx);
         y = in2y(idx);
-        this.ctx.lineTo(norm2x(x, y), y);
+        this.ctx.lineTo(norm2x(x, y), norm2y(y));
       }
       this.ctx.fillStyle = cckr_colors[d];
       this.ctx.fill();
@@ -325,8 +648,8 @@
         if (neighbor) {
           var dx = in2x(neighbor),
             dy = in2y(neighbor);
-          this.ctx.moveTo(norm2x(x, y), y);
-          this.ctx.lineTo(norm2x(dx, dy), dy);
+          this.ctx.moveTo(norm2x(x, y), norm2y(y));
+          this.ctx.lineTo(norm2x(dx, dy), norm2y(dy));
         }
       }
     }
@@ -342,6 +665,7 @@
       var x = in2x(i),
         y = in2y(i);
       x = norm2x(x, y);
+      y = norm2y(y);
       this.ctx.moveTo(x + R, y);
       this.ctx.arc(x, y, R, 0, kTwoPI);
     }
@@ -361,6 +685,7 @@
       var x = in2x(i),
         y = in2y(i);
       x = norm2x(x, y);
+      y = norm2y(y);
 
       var grad = this.ctx.createRadialGradient(x - gr, y - gr, 0.1, x -
         gr, y - gr, 0.2);
@@ -388,6 +713,7 @@
         var x = in2x(idx),
           y = in2y(idx);
         x = norm2x(x, y);
+        y = norm2y(y);
         this.ctx.moveTo(x + R, y);
         this.ctx.arc(x, y, R, 0, kTwoPI);
       }
@@ -420,6 +746,29 @@
     this.ctx.fill();
     this.ctx.closePath();
   }
+  GameUI.prototype._drawAnimate = function() {
+    if (this.animate == null) return;
+
+    var R = this.radius * (1 + 0.25 / 2 * Math.abs(this.animate.idx - 3));
+
+    var gr = R / 2;
+    var x = this.animate.cur_x,
+      y = this.animate.cur_y;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(x + R, y);
+    this.ctx.arc(x, y, R, 0, kTwoPI);
+
+    var grad = this.ctx.createRadialGradient(x - gr, y - gr, R * 0.1, x -
+      gr, y - gr, R * 0.2);
+
+    grad.addColorStop(0, "white");
+    grad.addColorStop(1, cckr_colors[this.animate.chkside - 1]);
+    this.ctx.fillStyle = grad;
+
+    this.ctx.fill();
+    this.ctx.closePath();
+  }
 
   GameUI.prototype._drawCoordinate = function(d = 0) {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -433,7 +782,7 @@
       var px = in2x(i),
         py = in2y(i);
       px = norm2x(px, py) * this.scale + this.offsetX - meta.width / 2;
-      py = py * this.scale + this.offsetY + 5;
+      py = norm2y(py) * this.scale + this.offsetY + 5;
       this.ctx.beginPath();
       this.ctx.fillText(txt, px, py);
       this.ctx.closePath();
