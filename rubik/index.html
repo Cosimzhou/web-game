@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<!-- saved from url=(0077)https://hammerc.github.io/dou3d-ts/learning/learningNotes/lesson_3/index.html -->
-<html lang="en">
+<html lang="zh-cn">
 
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -12,75 +11,41 @@
   <script src="./gl-matrix.js"></script>
 
   <!-- 顶点着色器 -->
-  <script id="shader-vs" type="x-shader/x-vertex">
-    attribute vec3 aVertexPosition;
-    attribute vec4 aVertexColor;
-    attribute vec3 aVertexNormal;
-
-    uniform mat4 uMMatrix;
-    uniform mat4 invMMatrix;
-    uniform mat4 uVMatrix;
-    uniform mat4 invVMatrix;
-    uniform mat4 uPMatrix;
-    uniform mat4 invPMatrix;
-
-    uniform vec3 lightDirection;
-    uniform vec3 eyeDirection;
-    uniform vec4 ambientColor;
-
-    varying vec4 vColor;
-
-    void main() {
-        vec3  invLight = normalize(invMMatrix *invVMatrix * invPMatrix * vec4(lightDirection, 0.0)).xyz;
-        vec3  invEye   = normalize(invMMatrix *invVMatrix * invPMatrix * vec4(eyeDirection, 0.0)).xyz;
-        vec3  halfLE   = normalize(invLight + invEye);
-        float diffuse  = clamp(dot(aVertexNormal, invLight), 0.0, 0.9);
-        float specular = pow(clamp(dot(aVertexNormal, halfLE), 0.0, 1.0), 50.0);
-        vec4  light    = aVertexColor * vec4(vec3(diffuse), 1.0) + vec4(vec3(specular), 1.0);
-        vColor         = light + ambientColor;
-
-        gl_Position    = uPMatrix * uVMatrix * uMMatrix * vec4(aVertexPosition, 1.0);
-    }
+  <script id="shader-vs" type="x-shader/x-vertex" src="rubik.vert.glsl">
   </script>
 
   <!-- 片段着色器 -->
-  <script id="shader-fs" type="x-shader/x-fragment">
-    precision mediump float;
-
-    varying vec4 vColor;
-    void main() {
-        gl_FragColor = vColor;
-    }
+  <script id="shader-fs" type="x-shader/x-fragment" src="rubik.frag.glsl">
   </script>
 
-  <script type="text/javascript" src="./draw-cube.js"></script>
+  <script type="text/javascript" src="./rubik.js"></script>
 </head>
 
 <body onload="startup();" style="background-color:#777">
   <center>
     <canvas id="myGLCanvas" width="500" height="500"></canvas><br>
     <canvas id="myCanvas" width="500" height="100"></canvas><br>
-    <input type="button" value="恢复" onclick="recoverToggle()">
-    <input type="button" value="游转" onclick="hoverToggle()">
-    <input type="button" value="打乱" onclick="randomToggle()"><br>
-    <input type="button" value="随机" onclick="shuffle()">
-    <input type="button" value="复位" onclick="reset()"><br>
+    <input type="button" value="恢复" onclick="game.recoverToggle()">
+    <input type="button" value="游转" onclick="game.hoverToggle()">
+    <input type="button" value="打乱" onclick="game.randomToggle()"><br>
+    <input type="button" value="随机" onclick="game.shuffle()">
+    <input type="button" value="复位" onclick="game.reset()"><br>
 
-    <input type="button" value="正视" onclick="focusView(0)">
-    <input type="button" value="左前" onclick="focusView(1)">
-    <input type="button" value="前俯" onclick="focusView(2)"><br>
-    <input type="button" value="前面" onclick="focusASide(0)">
-    <input type="button" value="左面" onclick="focusASide(2)">
-    <input type="button" value="上面" onclick="focusASide(4)"><br>
-    <input type="button" value="后面" onclick="focusASide(1)">
-    <input type="button" value="右面" onclick="focusASide(3)">
-    <input type="button" value="下面" onclick="focusASide(5)"><br>
-    <input type="button" value="2阶" onclick="changeOrder(2)">
-    <input type="button" value="3阶" onclick="changeOrder(3)">
-    <input type="button" value="4阶" onclick="changeOrder(4)"><br>
-    <input type="button" value="5阶" onclick="changeOrder(5)">
-    <input type="button" value="6阶" onclick="changeOrder(6)">
-    <input type="button" value="7阶" onclick="changeOrder(7)">
+    <input type="button" value="正视" onclick="game.focusView(0)">
+    <input type="button" value="左前" onclick="game.focusView(1)">
+    <input type="button" value="前俯" onclick="game.focusView(2)"><br>
+    <input type="button" value="前面" onclick="game.focusASide(0)">
+    <input type="button" value="左面" onclick="game.focusASide(2)">
+    <input type="button" value="上面" onclick="game.focusASide(4)"><br>
+    <input type="button" value="后面" onclick="game.focusASide(1)">
+    <input type="button" value="右面" onclick="game.focusASide(3)">
+    <input type="button" value="下面" onclick="game.focusASide(5)"><br>
+    <input type="button" value="2阶" onclick="game.changeOrder(2)">
+    <input type="button" value="3阶" onclick="game.changeOrder(3)">
+    <input type="button" value="4阶" onclick="game.changeOrder(4)"><br>
+    <input type="button" value="5阶" onclick="game.changeOrder(5)">
+    <input type="button" value="6阶" onclick="game.changeOrder(6)">
+    <input type="button" value="7阶" onclick="game.changeOrder(7)">
   </center>
 </body>
 
