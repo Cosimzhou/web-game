@@ -8,7 +8,7 @@
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title>模拟魔方</title>
 
-  <script src="./gl-matrix.js"></script>
+  <script src="../inc/gl-matrix.js"></script>
 
   <!-- 顶点着色器 -->
   <script id="shader-vs" type="x-shader/x-vertex" src="rubik.vert.glsl">
@@ -29,7 +29,8 @@
     <input type="button" value="游转" onclick="game.hoverToggle()">
     <input type="button" value="打乱" onclick="game.randomToggle()"><br>
     <input type="button" value="随机" onclick="game.shuffle()">
-    <input type="button" value="复位" onclick="game.reset()"><br>
+    <input type="button" value="复位" onclick="game.reset()">
+    <input type="button" value="变形" onclick="game.modelToggle()"><br>
 
     <input type="button" value="正视" onclick="game.focusView(0)">
     <input type="button" value="左前" onclick="game.focusView(1)">

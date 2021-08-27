@@ -1,24 +1,32 @@
 var gls;
-var gl, ctx2d;
+var ctx2d;
 var game;
-
-
-//var modeRotate = 0; // recover: 1, random: 2
-var cubeOrderNum = 3;
 
 var c2dMargin = (6 * 100 - 500) / 5,
   c2dSide = 100 - 2 * c2dMargin;
 var c2dPixelLen;
 
-var radius = 3;
+// Math Const
+var SQRT2 = Math.sqrt(2.0);
+var SQRT3 = Math.sqrt(3.0);
+var SQRT6 = Math.sqrt(6.0);
 
-var R = 2.1;
-var A90 = Math.PI / 2,
-  A120 = Math.PI * 2 / 3,
-  A180 = Math.PI,
-  A270 = -Math.PI / 2,
-  A48 = 0.8379118333508581;
+var SQRT2_2 = SQRT2 / 2.0;
+var SQRT2_3 = SQRT2 / 3.0;
+var SQRT2_4 = SQRT2 / 4.0;
+var SQRT3_2 = SQRT3 / 2.0;
+var SQRT6_3 = SQRT6 / 3.0;
 
+var DN1_3 = 1.0 / 3.0;
+var DN2_3 = 2.0 / 3.0;
+
+var A90 = Math.PI / 2.0;
+var A120 = Math.PI * DN2_3;
+var A180 = Math.PI;
+var A270 = -A90;
+var A48 = 0.8379118333508581;
+
+// Color Const
 var colorArray = [
     [0.0, 0.0, 0.0, 1.0], // Black
     [0.0, 0.0, 1.0, 1.0], // Blue
@@ -40,7 +48,6 @@ var colorArray2D = [
     "#0aa", // Dark Cyan
 ];
 
-var xyzAxis = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, -1, 0]];
 
 function incept(base, derive) {
   if (typeof base === 'function') base = new base();
@@ -82,6 +89,8 @@ function CubeShape() {
   this.axisNum = 3;
   this.angNum = 3;
   this.angUnit = A90;
+  this.surfaceNum = 6;
+  this.modelSide = SQRT2;
 
   this.setupBuffers(gls);
 }
@@ -94,7 +103,13 @@ CubeShape.prototype.xyzAxis = [
   [1, -1, 0]
 ];
 
-CubeShape.prototype.vertexNormal = [
+CubeShape.prototype.ringRotate = [
+  [A90, [0, 1, 0]], // y axis
+  [A90, [1, 0, 0]], // x axis
+  [0, [0, 0, 0]],
+];
+
+CubeShape.prototype.surfaceNormals = [
   [0.0, 0.0, 1.0],
   [1.0, 0.0, 0.0],
   [0.0, 1.0, 0.0],
@@ -103,7 +118,7 @@ CubeShape.prototype.vertexNormal = [
   [0.0, -1.0, 0.0],
 ];
 
-CubeShape.prototype.vertexPosition = [
+CubeShape.prototype.surfacePositions = [
     // Front face
     [1.0, 1.0, 1.0, //v0
     -1.0, 1.0, 1.0, //v1
@@ -144,12 +159,12 @@ CubeShape.prototype.vertexPosition = [
 CubeShape.prototype.setupBuffers = function(gls) {
   // Vertex Buffer
   this.vertexPositionBuffers = [
-    gls.arrayToBuffer(this.vertexPosition[0], 3),
-    gls.arrayToBuffer(this.vertexPosition[1], 3),
-    gls.arrayToBuffer(this.vertexPosition[2], 3),
-    gls.arrayToBuffer(this.vertexPosition[3], 3),
-    gls.arrayToBuffer(this.vertexPosition[4], 3),
-    gls.arrayToBuffer(this.vertexPosition[5], 3),
+    gls.arrayToBuffer(this.surfacePositions[0], 3),
+    gls.arrayToBuffer(this.surfacePositions[1], 3),
+    gls.arrayToBuffer(this.surfacePositions[2], 3),
+    gls.arrayToBuffer(this.surfacePositions[3], 3),
+    gls.arrayToBuffer(this.surfacePositions[4], 3),
+    gls.arrayToBuffer(this.surfacePositions[5], 3),
   ];
 
   // Vertex Index Buffer
@@ -161,8 +176,7 @@ CubeShape.prototype.focusView = function(f, gls) {
   switch (f) {
     case 0:
       glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A48, this
-        .xyzAxis[
-          4]);
+        .xyzAxis[4]);
       break;
     case 1: // Left front
       glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A90 / 2,
@@ -234,9 +248,10 @@ CubeShape.prototype.circleProject = function(side, axis, layer) {
   var reverse = axis == 1 || (side == 1 && axis == 0) || ((
     side == 3 || side == 5) && axis == 2);
   if (reverse) {
-    layer = cubeOrderNum - layer - 1;
+    layer = this.orderNum - layer - 1;
   }
-  return layer + 0.45;
+
+  return [layer, xy];
 }
 
 /**
@@ -266,70 +281,84 @@ CubeShape.prototype.circleProject = function(side, axis, layer) {
  *                  /    |
  *                       |
  *
- *  Surface 1: P1, P2, P3
- *  Surface 2: P1, P2, P4
- *  Surface 3: P2, P3, P4
- *  Surface 4: P1, P3, P4
+ *  Surface 1: P2, P3, P4
+ *  Surface 2: P1, P3, P4
+ *  Surface 3: P1, P2, P4
+ *  Surface 4: P1, P2, P3
  */
-var SQRT2 = Math.sqrt(2);
-var SQRT3 = Math.sqrt(3);
-var SQRT6 = Math.sqrt(6);
+
+var T4CAngle = Math.acos(DN1_3);
 
 function TetrahedronShape() {
   this.axisNum = 4;
   this.angNum = 2;
   this.angUnit = A120;
+  this.surfaceNum = 4;
+  this.modelSide = SQRT3_2;
 
   this.setupBuffers(gls);
 }
-//
-//[[1.0,    0.0,      -SQRT2/4.0],
-// [-0.5,   SQRT3/2,  -SQRT2/4.0],
-// [-0.5,   -SQRT3/2, -SQRT2/4.0],
-// [0.0,    0.0,      SQRT3*0.75]]
+
+TetrahedronShape.prototype.vertexVector = [
+  [1.0, 0.0, -SQRT2_4],
+  [0.0, 0.0, SQRT2 * 0.75],
+  [-0.5, -SQRT3_2, -SQRT2_4],
+  [-0.5, SQRT3_2, -SQRT2_4],
+];
+
 TetrahedronShape.prototype.xyzAxis = [
-	[0.0, 0.0, 0.0],
-	[SQRT2 / 3.0, -SQRT6 / 3.0, 1.0 / 3.0],
-  [SQRT2 / 3.0, SQRT6 / 3.0, 1.0 / 3.0],
-  [-SQRT2 * 2 / 3.0, 0.0, 1.0 / 3.0],
-  [0.0, 0.0, -1.0]];
+  [0.0, 0.0, 0.0],
+  [-SQRT2 * DN2_3, 0.0, DN1_3],
+  [0.0, 0.0, -1.0],
+  [SQRT2_3, SQRT6_3, DN1_3],
+  [SQRT2_3, -SQRT6_3, DN1_3]];
+
+
+TetrahedronShape.prototype.ringRotate = [
+  [T4CAngle, [0, -1, 0]],
+  [0, [0, 0, 0]],
+  [T4CAngle, [-1.5, SQRT3_2, 0]],
+  [T4CAngle, [1.5, SQRT3_2, 0]]
+];
 
 // Normal vectors
-TetrahedronShape.prototype.vertexNormal = [
-	[SQRT2 / 3.0, -SQRT6 / 3.0, 1.0 / 3.0],
-  [SQRT2 / 3.0, SQRT6 / 3.0, 1.0 / 3.0],
-  [-SQRT2 * 2 / 3.0, 0.0, 1.0 / 3.0],
-  [0.0, 0.0, -1.0]];
+TetrahedronShape.prototype.surfaceNormals = [
+  [-SQRT2 * DN2_3, 0.0, DN1_3],
+  [0.0, 0.0, -1.0],
+  [SQRT2_3, SQRT6_3, DN1_3],
+  [SQRT2_3, -SQRT6_3, DN1_3]
+  ];
 
-TetrahedronShape.prototype.vertexPosition = [
+
+TetrahedronShape.prototype.surfacePositions = [
   // Surface 1
-  [1.0, 0.0, -SQRT2 / 4.0,
-   -0.5, -SQRT3 / 2, -SQRT2 / 4.0,
-   0.0, 0.0, SQRT3 * 0.75],
+  [-0.5, SQRT3_2, -SQRT2_4,
+   -0.5, -SQRT3_2, -SQRT2_4,
+   0.0, 0.0, SQRT2 * 0.75],
 
   // Surface 2
-  [1.0, 0.0, -SQRT2 / 4.0,
-   -0.5, SQRT3 / 2, -SQRT2 / 4.0,
-   0.0, 0.0, SQRT3 * 0.75],
+  [1.0, 0.0, -SQRT2_4,
+   -0.5, SQRT3_2, -SQRT2_4,
+   -0.5, -SQRT3_2, -SQRT2_4],
 
   // Surface 3
-  [-0.5, SQRT3 / 2, -SQRT2 / 4.0,
-   -0.5, -SQRT3 / 2, -SQRT2 / 4.0,
-   0.0, 0.0, SQRT3 * 0.75],
+  [1.0, 0.0, -SQRT2_4,
+   -0.5, SQRT3_2, -SQRT2_4,
+   0.0, 0.0, SQRT2 * 0.75],
 
   // Surface 4
-  [1.0, 0.0, -SQRT2 / 4.0,
-   -0.5, SQRT3 / 2, -SQRT2 / 4.0,
-   -0.5, -SQRT3 / 2, -SQRT2 / 4.0],
+  [1.0, 0.0, -SQRT2_4,
+   -0.5, -SQRT3_2, -SQRT2_4,
+   0.0, 0.0, SQRT2 * 0.75]
 ];
 
 TetrahedronShape.prototype.setupBuffers = function(gls) {
   // Vertex Buffer
   this.vertexPositionBuffers = [
-    gls.arrayToBuffer(this.vertexPosition[0], 3),
-    gls.arrayToBuffer(this.vertexPosition[1], 3),
-    gls.arrayToBuffer(this.vertexPosition[2], 3),
-    gls.arrayToBuffer(this.vertexPosition[3], 3),
+    gls.arrayToBuffer(this.surfacePositions[0], 3),
+    gls.arrayToBuffer(this.surfacePositions[1], 3),
+    gls.arrayToBuffer(this.surfacePositions[2], 3),
+    gls.arrayToBuffer(this.surfacePositions[3], 3),
   ];
 
   // Vertex Index Buffer
@@ -390,6 +419,55 @@ TetrahedronShape.prototype.focusASide = function(f, gls) {
   }
 }
 
+/**
+ * Pentagonal Dodecahedron
+ *
+ *
+ */
+var phi = 0.5 + Math.sqrt(5) / 2;
+var phi_1 = 1.0 / phi;
+
+function DodecahedronShape() {
+
+}
+
+//var p = [
+//  [0, phi, phi_1],
+//  [phi, phi_1, 0],
+//  [phi_1, 0 phi],
+//  [1, 1, 1],
+//];
+DodecahedronShape.prototype.surfacePositions = [
+  []
+];
+
+
+//////////////////////////////////////////////////////////////
+//
+//   Cursor
+function Cursor(rubik, axis, layer) {
+  this.rubik = rubik;
+  this.axis = axis; // old 1
+  this.layer = layer; // old 5
+  this.layerOffset = rubik.layerIndices[layer]; // old 3
+  this.angle = 0; // old 0
+  this.tick = 0; // old 4
+}
+
+Cursor.prototype.changeLayer = function(lyr) {
+  this.layer = lyr;
+  this.layerOffset = this.rubik.layerIndices[this.layer];
+}
+
+Cursor.prototype.isRevert = function(cur) {
+  return this.similarTo(cur.layer) && (this.angle ==
+    -cur.angle || (this.angle + cur.angle == 2 * Math.PI));
+}
+
+Cursor.prototype.similarTo = function(cur) {
+  return (this.axis == cur.axis && this.layer == cur.layer);
+}
+
 ///////////////////////////////////////////////////////
 //
 // Rubik class
@@ -399,6 +477,16 @@ function Rubik() {
   incept(Rotatable, this);
 
   this.transformInfos = [];
+  this.R = 2.1;
+}
+
+Rubik.prototype.getCursor = function(axis, layer) {
+  var csr = new Cursor(this, axis, layer);
+
+  // Abstract sentences, variables are derived from Shape
+  csr.angle = this.angUnit;
+
+  return csr;
 }
 
 Rubik.prototype.assemble = function(tfi, matrix) {
@@ -409,24 +497,29 @@ Rubik.prototype.assemble = function(tfi, matrix) {
   glMatrix.mat4.translate(matrix, matrix, tf[2]);
 }
 
-Rubik.prototype.fillMove = function(ang, axisIdx, lyr) {
-  var moves = { meta: [ang, axisIdx, this.moveCount, lyr] };
-  var move = [ang, axisIdx + 1, this.moveCount, lyr];
-  var cubes = this.findLayer(axisIdx, lyr);
+Rubik.prototype.fillMove = function(ang, axisIdx, layer) {
+  var cursor;
+  if (ang instanceof Cursor) {
+    cursor = ang;
+  } else {
+    cursor = this.getCursor(axisIdx, layer);
+    cursor.angle = ang;
+  }
+
+  var moves = { meta: cursor };
+  var cubes = this.findLayer(cursor.axis, cursor.layerOffset);
   for (var ci of cubes) {
-    moves[ci] = move;
+    moves[ci] = cursor;
   }
 
   return moves;
 }
 
-Rubik.prototype.findLayer = function(axis, lyr) {
+Rubik.prototype.findLayer = function(axis, layerOffset) {
   var m = glMatrix.mat4.create();
   var result = [];
-  //var axisVec = glMatrix.vec4.create();
-  //axisVec = this.xyzAxis[axis];
 
-  lyr *= R;
+  layerOffset *= this.R;
   for (var tfi in this.transformInfos) {
     glMatrix.mat4.identity(m);
     this.assemble(tfi, m);
@@ -435,7 +528,9 @@ Rubik.prototype.findLayer = function(axis, lyr) {
     v[3] = 1;
 
     glMatrix.vec4.transformMat4(v, v, m);
-    if (Math.abs(lyr - v[axis]) <= 0.1) {
+    var project = glMatrix.vec3.dot(v, this.xyzAxis[axis + 1]);
+    var value = Math.abs(layerOffset - project);
+    if (value <= 0.65) {
       result.push(tfi);
     }
   }
@@ -474,6 +569,7 @@ Rubik.prototype.project2D = function(map2d) {
 /////////////////////////////////////////////////////////////////
 //
 // CubeRubik
+//
 function CubeRubik(order) {
   incept(Rubik, this);
   incept(CubeShape, this);
@@ -489,16 +585,15 @@ CubeRubik.prototype.setOrder = function(n) {
   if (n == this.orderNum || n > 7) return;
   this.orderNum = n;
   var cubeOrderHalf = n >> 1;
-  radius = 5 * n;
 
   this.layerIndices = [];
   if (this.orderNum % 2) {
-    R = 2.1;
+    this.R = 2.1;
     this.surfaceV = cubeOrderHalf;
     for (var i = -this.surfaceV; i <= this.surfaceV; ++i)
       this.layerIndices.push(i);
   } else {
-    R = 1.025;
+    this.R = 1.025;
     this.surfaceV = 2 * cubeOrderHalf - 1;
     for (var i = -this.surfaceV; i <= this.surfaceV; i += 2)
       this.layerIndices.push(i);
@@ -510,7 +605,7 @@ CubeRubik.prototype.setOrder = function(n) {
 
 CubeRubik.prototype.initTransforms = function() {
   var transformInfos = [];
-  var V = this.surfaceV * R;
+  var V = this.surfaceV * this.R;
   // Vertex cubes
   transformInfos.push(
     // Front side
@@ -528,7 +623,7 @@ CubeRubik.prototype.initTransforms = function() {
   // Edge cubes
   var edgeCubeNum = this.orderNum - 2;
   for (var i, n = 0; n < edgeCubeNum; ++n) {
-    i = this.layerIndices[n + 1] * R;
+    i = this.layerIndices[n + 1] * this.R;
     transformInfos.push(
       // At front side
       [0, 0, [V, i, V], [1, 2]], // right
@@ -550,9 +645,9 @@ CubeRubik.prototype.initTransforms = function() {
   }
 
   for (var i, x = 0; x < edgeCubeNum; ++x) {
-    i = this.layerIndices[x + 1] * R;
+    i = this.layerIndices[x + 1] * this.R;
     for (var j, y = 0; y < edgeCubeNum; ++y) {
-      j = this.layerIndices[y + 1] * R;
+      j = this.layerIndices[y + 1] * this.R;
       transformInfos.push(
         [0, 0, [i, j, V], [1]], // Front side
         [1, A180, [i, j, V], [4]], // Back side
@@ -572,7 +667,7 @@ CubeRubik.prototype.drawParticle3D = function(tfInfo) {
   var colors = tfInfo[3];
   for (var i = 0; i < 6; i++) {
     var color = i < colors.length ? colors[i] : 0;
-    gls.setUniversalNormal(this.vertexNormal[i]);
+    gls.setUniversalNormal(this.surfaceNormals[i]);
     gls.setUniversalColor(colorArray[color]);
     gls.drawObject(this.vertexPositionBuffers[i], this.vertexIndexBuffer);
   }
@@ -580,36 +675,59 @@ CubeRubik.prototype.drawParticle3D = function(tfInfo) {
 
 
 CubeRubik.prototype.draw2D = function() {
-  //return;
-  //var boldSides = new Set();
-  //var boldLayer, boldAxis;
-  //if (currentRotate && currentRotate.meta) {
-  //  boldAxis = currentRotate.meta[1];
-  //  boldLayer = this.layerIndices.indexOf(currentRotate.meta[3]);
-  //} else if (mayCircle) {
-  //  boldAxis = mayCircle[1];
-  //  boldLayer = this.layerIndices.indexOf(mayCircle[3]);
-  //}
-
-  //if (boldAxis == 0) {
-  //  boldSides = new Set([0, 1, 4, 5]);
-  //} else if (boldAxis == 1) {
-  //  boldSides = new Set([0, 1, 2, 3]);
-  //} else if (boldAxis == 2) {
-  //  boldSides = new Set([4, 5, 2, 3]);
-  //}
-
-  //if (boldSides.has(s)) {
-  //  drawBoldCircle2D(s, boldAxis, boldLayer);
-  //}
-
-  for (var s = 0; s < 6; s++) {
-    ctx2d.save();
-    //  Set pixel side
+  function transformSide(s) {
     ctx2d.translate(c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
     ctx2d.scale(c2dPixelLen, c2dPixelLen);
     ctx2d.translate(0.05, 0.05);
+  }
 
+  var me = this;
+
+  function drawBoldCircle(ring, sides) {
+    for (var s of sides) {
+      ctx2d.save();
+      transformSide(s);
+      var lxy = me.circleProject(s, ring.axis, ring.layer);
+      var l = lxy[0] + 0.45;
+
+      ctx2d.beginPath();
+      if (lxy[1]) {
+        ctx2d.moveTo(-0.3, l);
+        ctx2d.lineTo(me.orderNum + 0.2, l);
+      } else {
+        ctx2d.moveTo(l, -0.3);
+        ctx2d.lineTo(l, me.orderNum + 0.2);
+      }
+      ctx2d.lineWidth = 1.2;
+      ctx2d.strokeStyle = colorArray2D[7];
+      ctx2d.stroke();
+      ctx2d.closePath();
+
+      ctx2d.restore();
+    }
+  }
+
+  var ring;
+  if (game.animate && game.animate.currentRotate && game.animate.currentRotate
+    .meta) {
+    ring = game.animate.currentRotate.meta;
+  } else if (game.mayCircle) {
+    ring = game.mayCircle;
+  }
+
+  if (ring) {
+    if (ring.axis == 0) {
+      drawBoldCircle(ring, [0, 1, 4, 5]);
+    } else if (ring.axis == 1) {
+      drawBoldCircle(ring, [0, 1, 2, 3]);
+    } else if (ring.axis == 2) {
+      drawBoldCircle(ring, [4, 5, 2, 3]);
+    }
+  }
+
+  for (var s = 0; s < 6; s++) {
+    ctx2d.save();
+    transformSide(s);
     for (var x = 0; x < this.orderNum; x++)
       for (var y = 0; y < this.orderNum; y++) {
         // Draw pixel
@@ -624,6 +742,7 @@ CubeRubik.prototype.draw2D = function() {
   }
 }
 
+
 /**
  *  The index of the side in 3D space to 2D space conversion.
  *
@@ -637,6 +756,7 @@ CubeRubik.prototype.draw2D = function() {
  *     Down    |  2   |   6      |    6
  */
 CubeRubik.prototype.projectParticle2D = function(map2d, transInfo, matrix) {
+  var R = this.R;
   var pos = matrix.slice(12, 15).map(function(x) {
     return parseInt(Math.round(x / R));
   });
@@ -707,30 +827,168 @@ CubeRubik.prototype.projectParticle2D = function(map2d, transInfo, matrix) {
 ////////////////////////////////////////////////////////////////
 //
 // TetrahedronRubik
-function TetrahedronRubik() {
+function TetrahedronRubik(order) {
   incept(Rubik, this);
   incept(TetrahedronShape, this);
+
+  this.layerIndices = null;
+  this.setOrder(order);
+}
+
+TetrahedronRubik.prototype.setOrder = function(n) {
+  this.orderNum = n;
+  if (this.orderNum % 2) {
+    // Odd tetrahedron order
+    this.R = 1.05;
+  } else {
+    this.R = 1.05;
+  }
+
+  // init layer indices
+  this.layerIndices = [];
+  for (var i = 0; i < n; ++i) {
+    this.layerIndices.push((1 + DN1_3) * i - n + 1);
+  }
 
   this.initTransforms();
 }
 
 TetrahedronRubik.prototype.initTransforms = function() {
+  var N = this.orderNum - 1;
+  var rt = this.R * N;
 
-  this.transformInfos.push(
-    [0, 0, [0, 0, 0], [1, 2, 3, 4]]
-  );
+  // Vertices
+  for (var s = 0, color, trans; s < 4; s++) {
+    color = [1, 2, 3, 4];
+    color[s] = 0;
+    trans = [];
+    glMatrix.vec3.scale(trans, this.vertexVector[s], rt);
+    this.transformInfos.push([0, 0, trans, color]);
+  }
+
+  // Edges
+  if (N > 1) {
+    for (var p1 = 0; p1 < 3; p1++) {
+      for (var p2 = p1 + 1; p2 < 4; p2++) {
+        var clr = [1, 2, 3, 4];
+        clr[p1] = clr[p2] = 0;
+        for (var i = 1, trans; i < N; i++) {
+          trans = [];
+          glMatrix.vec3.lerp(trans,
+            this.vertexVector[p1],
+            this.vertexVector[p2],
+            i / N);
+          glMatrix.vec3.scale(trans, trans, rt);
+          this.transformInfos.push([0, 0, trans, clr]);
+        }
+      }
+    }
+  }
+
+  // Surfaces
+  for (var side = 0; side < 4; side++) {
+    var idx = [0, 1, 2, 3];
+    var nor = this.vertexVector[side];
+    var clr = [0, 0, 0, 0];
+    clr[side] = side + 1;
+    idx.splice(side, 1);
+
+    // Fill those positive triangles
+    var p1 = [],
+      p2 = [],
+      p0 = [];
+    glMatrix.vec3.scale(p0, this.vertexVector[idx[0]], rt);
+    glMatrix.vec3.scale(p1, this.vertexVector[idx[1]], rt);
+    glMatrix.vec3.scale(p2, this.vertexVector[idx[2]], rt);
+    for (var i = 1; i < N; ++i) {
+      var pn = [],
+        pm = [];
+      lambda = i / N;
+      glMatrix.vec3.lerp(pn, p0, p1, lambda);
+      glMatrix.vec3.lerp(pm, p0, p2, lambda);
+      for (var j = 1, trans; j < i; ++j) {
+        trans = [];
+        glMatrix.vec3.lerp(trans, pn, pm, j / i);
+        this.transformInfos.push([0, 0, trans, clr]);
+      }
+    }
+
+    // Fill those negitive triangles
+    var saxis = side + 1;
+    var matrix = glMatrix.mat4.create();
+    glMatrix.mat4.rotate(matrix, matrix, Math.PI, this.xyzAxis[saxis]);
+    glMatrix.vec3.transformMat4(p0, p0, matrix);
+    glMatrix.vec3.transformMat4(p1, p1, matrix);
+    glMatrix.vec3.transformMat4(p2, p2, matrix);
+
+    var rx = 2.0 / 3 / N;
+    var pp0 = [];
+    glMatrix.vec3.lerp(pp0, p1, p2, 0.5);
+    glMatrix.vec3.lerp(pp0, p0, pp0, rx);
+    this.transformInfos.push([saxis, Math.PI, pp0, clr]);
+
+    if (N <= 1) continue;
+
+    var pp1 = [],
+      pp2 = [];
+    glMatrix.vec3.lerp(pp1, p0, p2, 0.5);
+    glMatrix.vec3.lerp(pp1, p1, pp1, rx);
+
+    glMatrix.vec3.lerp(pp2, p0, p1, 0.5);
+    glMatrix.vec3.lerp(pp2, p2, pp2, rx);
+
+    for (var i = 0; i < N; ++i) {
+      var pn = [],
+        pm = [];
+      var lambda = i / (N - 1);
+      glMatrix.vec3.lerp(pn, pp0, pp1, lambda);
+      glMatrix.vec3.lerp(pm, pp0, pp2, lambda);
+      for (var j = 0; j <= i; ++j) {
+        trans = [];
+        glMatrix.vec3.lerp(trans, pn, pm, j / i);
+        this.transformInfos.push([saxis, Math.PI, trans, clr]);
+      }
+    }
+  }
 }
 
 TetrahedronRubik.prototype.drawParticle3D = function(tfInfo) {
   var colors = tfInfo[3];
   for (var i = 0; i < 4; i++) {
     var color = i < colors.length ? colors[i] : 0;
-    gls.setUniversalNormal(this.vertexNormal[i]);
+    gls.setUniversalNormal(this.surfaceNormals[i]);
     gls.setUniversalColor(colorArray[color]);
     gls.drawObject(this.vertexPositionBuffers[i], this.vertexIndexBuffer);
   }
 }
 
+TetrahedronRubik.prototype.projectParticle2D = function(map2d, transInfo,
+  matrix) {}
+
+TetrahedronRubik.prototype.draw2D = function() {
+  for (var s = 0; s < 4; s++) {
+    ctx2d.save();
+    //  Set pixel side
+    ctx2d.translate(c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
+    ctx2d.scale(c2dPixelLen, c2dPixelLen);
+    ctx2d.translate(0.05, 0.05);
+
+    for (var y = 0; y < this.orderNum; y++) {
+      for (var x = 0; x < this.orderNum; x++) {
+        // Draw pixel
+        ctx2d.beginPath();
+        ctx2d.fillStyle = colorArray2D[sideColorMap[s][x][y]];
+        ctx2d.moveTo(x, y);
+        ctx2d.lineTo(x, y);
+        ctx2d.lineTo(x, y);
+        ctx2d.closePath();
+        ctx2d.fill();
+      }
+    }
+
+    ctx2d.restore();
+  }
+}
 
 //////////////////////////////////////////////////////////////
 //
@@ -743,44 +1001,61 @@ function RingShape() {
   this.colorBuffer = null;
 }
 
+RingShape.prototype.transform = function(circle, rubik, matrix) {
+  var axis = rubik.xyzAxis[circle.axis + 1];
+  var rate = circle.layerOffset * rubik.R;
+
+  glMatrix.mat4.translate(matrix, matrix, [axis[0] * rate, axis[1] * rate,
+    axis[2] * rate]);
+  glMatrix.mat4.rotate(matrix, matrix, ...rubik.ringRotate[circle.axis]);
+}
+
 RingShape.prototype.render = function() {
+  var gl = gls.gl;
+
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   gl.depthMask(false);
 
+  gl.enable(gl.CULL_FACE);
   gls.setNormals(this.normalBuffer);
   gls.setColors(this.colorBuffer);
   gls.drawObject(this.vertexBuffer, this.vertexIndexBuffer);
+  gl.disable(gl.CULL_FACE);
 
   gl.depthMask(true);
   gl.disable(gl.BLEND);
 }
 
-RingShape.prototype.setupBuffer = function(orderNum) {
+RingShape.prototype.setupBuffer = function(radius) {
   var array = [];
   var colors = [];
   var indices = [];
   var normals = [];
+  var CAP = 36;
   var dR = 2,
-    h = 0.1;
-  var CAP = 36,
-    R1 = orderNum * 1.6,
+    h = 0.1 / 6 * radius,
+    R1 = radius * 1.4 * SQRT2_2,
     R2 = R1 + dR;
-  var rR = h * (Math.sqrt(h * h + dR * dR) - h) / dR;
+  var theta = Math.atan2(dR, h) / 2;
+  var cosTheta = Math.cos(theta),
+    sinTheta = Math.sin(theta);
   var uang = 2 * Math.PI / CAP;
   var pidx = 0;
   for (var i = 0; i < CAP; ++i) {
     var ang = uang * i;
-    array.push(R1 * Math.cos(ang), R1 * Math.sin(ang), 0);
-    array.push(R2 * Math.cos(ang), R2 * Math.sin(ang), h);
-    array.push(R2 * Math.cos(ang), R2 * Math.sin(ang), -h);
+    var cang = Math.cos(ang),
+      sang = Math.sin(ang);
+    array.push(R1 * cang, R1 * sang, 0);
+    array.push(R2 * cang, R2 * sang, h);
+    array.push(R2 * cang, R2 * sang, -h);
 
-    normals.push(-Math.cos(ang), -Math.sin(ang), 0);
-    normals.push(dR * Math.cos(ang), dR * Math.sin(ang), h);
-    normals.push(dR * Math.cos(ang), dR * Math.sin(ang), -h);
+    normals.push(-cang, -sang, 0);
+    normals.push(cosTheta * cang, cosTheta * sang, sinTheta);
+    normals.push(cosTheta * cang, cosTheta * sang, -sinTheta);
 
-    colors.push(0.0, 1.0, 1.0, (i % 2 ? 0.3 : 0.5));
+    colors.push(0.0, 1.0, 1.0, (i % 2 ? 0.1 : 0.5));
     colors.push(0.0, 1.0, 1.0, 0.7);
     colors.push(0.0, 1.0, 1.0, 0.7);
 
@@ -801,6 +1076,7 @@ RingShape.prototype.setupBuffer = function(orderNum) {
   indices.push(pidx + 2, pidx, 2);
   indices.push(2, pidx, 0);
 
+  var gl = gls.gl;
   if (this.vertexBuffer) {
     gl.deleteBuffer(this.vertexBuffer);
   }
@@ -847,7 +1123,7 @@ RandomRotator.prototype.gen = function() {
   var axisIdx, lyr;
   while (true) {
     axisIdx = parseInt(Math.random() * rbk.axisNum);
-    lyr = rbk.layerIndices[parseInt(Math.random() * rbk.orderNum)];
+    lyr = parseInt(Math.random() * rbk.orderNum);
     if (axisIdx != this.lastAxis || lyr != this.lastLyr) break;
   }
   this.lastLyr = lyr;
@@ -866,7 +1142,7 @@ RandomRotator.prototype.gen3 = function() {
   var axisIdx, lyr, differAng = false;
   while (true) {
     axisIdx = parseInt(Math.random() * rbk.axisNum);
-    lyr = rbk.layerIndices[parseInt(Math.random() * rbk.orderNum)];
+    lyr = parseInt(Math.random() * rbk.orderNum);
     if (axisIdx != this.lastAxis) break;
     if (lyr != this.lastLyr) { differAng = true; break; }
   }
@@ -894,41 +1170,53 @@ RandomRotator.prototype.gen3 = function() {
 //
 //  Rotatable
 function Rotatable() {
+  this.actions = [];
   this.clearRotates();
 }
 
 Rotatable.prototype.clearRotates = function() {
   this.rotateTrace = {};
-  this.moveCount = 0;
 }
 
 Rotatable.prototype.pushRotate = function(act) {
+  var meta = act.meta;
+
+  if (this.actions.length) {
+    var neta = this.actions[this.actions.length - 1].meta;
+    if (meta.similarTo(neta)) {
+      if (meta.isRevert(neta)) {
+        this.popRotate();
+      } else {
+        neta.angle += meta.angle;
+      }
+
+      return;
+    }
+  }
+
+  this.actions.push(act);
+
   for (var ci in act) {
     if (this.rotateTrace[ci] == null)
       this.rotateTrace[ci] = [];
-    this.rotateTrace[ci].push(act[ci]);
+    this.rotateTrace[ci].push(meta);
   }
-
-  this.moveCount++;
 }
 
 Rotatable.prototype.popRotate = function() {
-  if (this.moveCount <= 0) {
+  if (this.actions.length <= 0) {
     return null;
   }
 
-  this.moveCount--;
-  action = {};
-  for (var ci in this.rotateTrace) {
+  var act = this.actions.pop();
+  for (var ci in act) {
     var trace = this.rotateTrace[ci];
-    if (trace && trace.length && trace[trace.length - 1][2] == this
-      .moveCount) {
-      action[ci] = trace[trace.length - 1];
+    if (trace && trace.length) {
       trace.pop();
     }
   }
 
-  return action;
+  return act;
 }
 
 Rotatable.prototype.rotate = function(id, modelMatrix) {
@@ -937,8 +1225,8 @@ Rotatable.prototype.rotate = function(id, modelMatrix) {
     for (var i = trace.length - 1, rot; rot = trace[i]; i--) {
       glMatrix.mat4.rotate(modelMatrix,
         modelMatrix,
-        rot[0],
-        this.xyzAxis[rot[1]]); // xyz axis
+        rot.angle,
+        this.xyzAxis[rot.axis + 1]); // xyz axis
     }
   }
 }
@@ -949,106 +1237,15 @@ Rotatable.prototype.rotate = function(id, modelMatrix) {
 
 
 
-/***********************************************
- *
- *  axis | side | horizon | vertical | reverse
- * ------+------+---------+----------+---------
- *  0 x  |  0   |         |    1     |
- *       |  1   |         |    1     |    1
- *       |  4   |         |    1     |
- *       |  5   |         |    1     |
- *  1 y  |  0   |    1    |          |    1
- *       |  1   |    1    |          |    1
- *       |  2   |    1    |          |    1
- *       |  3   |    1    |          |    1
- *  2 z  |  2   |         |    1     |
- *       |  3   |         |    1     |    1
- *       |  4   |    1    |          |
- *       |  5   |    1    |          |    1
- *
- ***********************************************/
-function drawBoldCircle2D(side, axis, layer) {
-  var xy = (axis == 1) || (axis == 2 && side > 3);
-  var asx = (xy ? 1 : 0) + (side % 2) * 2 + axis * 4;
-  var reverse = axis == 1 || (side == 1 && axis == 0) || ((
-    side == 3 || side == 5) && axis == 2);
-  if (reverse) {
-    layer = cubeOrderNum - layer - 1;
-  }
-  var l = layer + 0.45;
-
-  ctx2d.beginPath();
-  if (xy) {
-    ctx2d.moveTo(-0.3, l);
-    ctx2d.lineTo(cubeOrderNum + 0.2, l);
-  } else {
-    ctx2d.moveTo(l, -0.3);
-    ctx2d.lineTo(l, cubeOrderNum + 0.2);
-  }
-  ctx2d.lineWidth = 1.2;
-  ctx2d.strokeStyle = colorArray2D[7];
-  ctx2d.stroke();
-  ctx2d.closePath();
-}
 
 function draw2D() {
   ctx2d.setTransform(1, 0, 0, 1, 0, 0);
   ctx2d.fillStyle = "#777";
   ctx2d.clearRect(0, 0, 500, 100);
-  //return;
+
   game.rubik.project2D(sideColorMap);
   game.rubik.draw2D();
-  //var boldSides = new Set();
-  //var boldLayer, boldAxis;
-  //if (currentRotate && currentRotate.meta) {
-  //  boldAxis = currentRotate.meta[1];
-  //  boldLayer = layerIndices.indexOf(currentRotate.meta[3]);
-  //} else if (mayCircle) {
-  //  boldAxis = mayCircle[1];
-  //  boldLayer = layerIndices.indexOf(mayCircle[3]);
-  //}
-
-  //if (boldAxis == 0) {
-  //  boldSides = new Set([0, 1, 4, 5]);
-  //} else if (boldAxis == 1) {
-  //  boldSides = new Set([0, 1, 2, 3]);
-  //} else if (boldAxis == 2) {
-  //  boldSides = new Set([4, 5, 2, 3]);
-  //}
-
-  //for (var s = 0; s < 6; s++) {
-  //  ctx2d.save();
-  //  //  Set pixel side
-  //  ctx2d.translate(c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
-  //  ctx2d.scale(c2dPixelLen, c2dPixelLen);
-  //  ctx2d.translate(0.05, 0.05);
-
-  //  if (boldSides.has(s)) {
-  //    drawBoldCircle2D(s, boldAxis, boldLayer);
-  //  }
-
-  //  for (var x = 0; x < cubeOrderNum; x++)
-  //    for (var y = 0; y < cubeOrderNum; y++) {
-  //      // Draw pixel
-  //      ctx2d.beginPath();
-  //      ctx2d.fillStyle = colorArray2D[sideColorMap[s][x][y]];
-  //      ctx2d.rect(x, y, 0.9, 0.9);
-  //      ctx2d.fill();
-  //      ctx2d.closePath();
-  //    }
-
-  //  ctx2d.restore();
-  //}
 }
-
-
-function initVaribles() {
-
-  //initSubCubeTransform();
-
-  // init sideColorMap
-}
-
 
 function startup() {
   var canvas2d = document.getElementById("myCanvas");
@@ -1091,9 +1288,9 @@ function startup() {
     var curRotate = game.animate && game.animate.curRotate;
     if (curRotate == null) {
       if (game.mayCircle) {
-        if (e.deltaY < 0) game.mayCircle[0] *= -1;
-        curRotate = game.rubik.fillMove(...game.mayCircle);
-        game.animate = new Animation(game, curRotate);
+        if (e.deltaY < 0) game.mayCircle.angle *= -1;
+        curRotate = game.rubik.fillMove(game.mayCircle);
+        game.animate = new Animation(game, curRotate, false, 2);
         game.animate.done = function(cr) {
           game.rubik.pushRotate(cr);
         }
@@ -1107,8 +1304,6 @@ function startup() {
 
   game = new Game();
 
-  //initVaribles();
-
   update();
   draw2D();
 }
@@ -1121,15 +1316,15 @@ function Animation(owner, curmove, reverse = false, s = 1, c = 100) {
   this.owner = owner;
   this.currentRotate = curmove;
   this.reverse = reverse;
-  this.cursor = 0;
+  this.frame = 0;
   this.cap = c || 100;
   this.step = s;
   this.done = null;
 }
 
 Animation.prototype.next = function() {
-  this.cursor += this.step;
-  if (this.cursor > this.cap) {
+  this.frame += this.step;
+  if (this.frame > this.cap) {
     var cr = this.currentRotate;
     this.currentRotate = null;
 
@@ -1138,7 +1333,7 @@ Animation.prototype.next = function() {
     }
 
     if (this.currentRotate) {
-      this.cursor = 0;
+      this.frame = 0;
     } else {
       this.owner.enterManual();
     }
@@ -1147,7 +1342,7 @@ Animation.prototype.next = function() {
 }
 
 Animation.prototype.progress = function() {
-  var prog = this.cursor / (this.cap || 1);
+  var prog = this.frame / (this.cap || 1);
   return this.reverse ? 1 - prog : prog;
 }
 
@@ -1156,8 +1351,8 @@ Animation.prototype.animateRotate = function(tfid, matrix) {
   if (act) {
     glMatrix.mat4.rotate(matrix,
       matrix,
-      act[0] * this.progress(),
-      this.owner.rubik.xyzAxis[act[1]]);
+      act.angle * this.progress(),
+      this.owner.rubik.xyzAxis[act.axis + 1]);
   }
 }
 
@@ -1176,31 +1371,52 @@ function Game() {
   this.click = false;
   this.dragging = false;
 
-  this.changeOrder(3);
+  this.shape = CubeRubik;
+  this.changeOrder(2);
+}
+
+Game.prototype.changeShape = function(s) {
+  if (s == 0) {
+    this.shape = CubeRubik;
+  } else {
+    this.shape = TetrahedronRubik;
+  }
+
+  this.changeOrder(this.rubik.orderNum);
+}
+
+Game.prototype.modelToggle = function(s) {
+  if (this.shape == CubeRubik) {
+    this.shape = TetrahedronRubik;
+  } else {
+    this.shape = CubeRubik;
+  }
+
+  this.changeOrder(this.rubik.orderNum);
 }
 
 Game.prototype.changeOrder = function(n) {
-  this.rubik = new CubeRubik(n);
-  //this.rubik = new TetrahedronRubik(n);
+  this.rubik = new this.shape(n);
   this.rubik.game = this;
+
+  this.radius = 3 * this.rubik.modelSide * n;
 
   this.random = new RandomRotator(this.rubik);
 
   this.ring = new RingShape();
-  this.ring.setupBuffer(n);
+  this.ring.setupBuffer(n * this.rubik.modelSide);
 
 
   // 2D
   sideColorMap = [];
   for (var s = 0; s < 6; s++) {
     sideColorMap.push([]);
-    for (var i = 0; i < this.orderNum; i++) {
-      sideColorMap[s].push(new Int8Array(this.orderNum));
+    for (var i = 0; i < n; i++) {
+      sideColorMap[s].push(new Int8Array(n));
     }
   }
 
-  c2dPixelLen = c2dSide / this.orderNum;
-
+  c2dPixelLen = c2dSide / n;
 }
 
 Game.prototype.render = function() {
@@ -1215,17 +1431,10 @@ Game.prototype.render = function() {
   }
 
   if (selectedCircle) {
-    var offset = [0, 0, 0];
-    offset[selectedCircle[1]] = selectedCircle[3] * R;
-
     gls.pushModelMatrix();
-    glMatrix.mat4.translate(gls.modelMatrix, gls.modelMatrix, offset);
-    glMatrix.mat4.rotate(gls.modelMatrix, gls.modelMatrix, A90, xyzAxis[2 -
-      selectedCircle[1]]);
+    this.ring.transform(selectedCircle, this.rubik, gls.modelMatrix);
     gls.uploadModelMatrixToShader();
-
     this.ring.render();
-
     gls.popModelMatrix();
   }
 }
@@ -1239,10 +1448,9 @@ Game.prototype.randomToggle = function() {
     var gm = this;
     this.modeRotate = 2;
     this.animate = new Animation(this, gm.random.gen());
-    this.animate.done = function(e) {
+    this.animate.done = function(cr) {
+      gm.rubik.pushRotate(cr);
       this.currentRotate = gm.random.gen();
-      gm.rubik.pushRotate(this.currentRotate);
-
     }
   } else if (this.modeRotate == 2) {
     this.enterManual();
@@ -1269,7 +1477,19 @@ Game.prototype.recoverToggle = function() {
 
 Game.prototype.enterManual = function() {
   this.modeRotate = 0;
-  this.animate = null;
+  if (this.animate && this.animate.currentRotate) {
+    var oldDone = this.animate.done;
+    this.animate.done = function(cr) {
+      if (oldDone && !this.reverse) {
+        oldDone.apply(this, [cr]);
+      }
+
+      // Stop animation
+      this.currentRotate = null;
+    }
+  } else {
+    this.animate = null;
+  }
 
   this.mayCircle = null;
 }
@@ -1282,6 +1502,12 @@ Game.prototype.manualMove = function(cm) {
       gm.rubik.pushRotate(cr);
     }
   }
+}
+
+Game.prototype.eyePoint = function() {
+  return [this.radius * Math.sin(this.perspectiveAngle),
+          8 * Math.sin(this.perspectiveAngle / 3),
+          this.radius * Math.cos(this.perspectiveAngle)];
 }
 
 Game.prototype._autoMove = function() {
@@ -1298,7 +1524,7 @@ Game.prototype.shuffle = function() {
   for (var i = 0; i < 40; i++) {
     this.rubik.pushRotate(this.random.gen());
   }
-  //
+
   draw2D();
 }
 
@@ -1309,14 +1535,14 @@ Game.prototype.drag = function(dragX, dragY) {
   var cubeMat = glMatrix.mat4.create();
   glMatrix.mat4.multiply(cubeMat, gls.invViewMatrix, gls.invProjMatrix);
 
-  if (game.dragging) {
+  if (this.dragging) {
     vec[0] = dragY, vec[1] = dragX;
     glMatrix.vec4.transformMat4(vec, vec, cubeMat);
     glMatrix.mat4.rotate(gls.rotateMatrix,
       gls.rotateMatrix,
       2 * Math.atan2(dist, 20),
       vec);
-    game.mayCircle = null;
+    this.mayCircle = null;
   } else if (dist > 3) {
     // Select circle candidate
     var axisIdx = 0,
@@ -1326,33 +1552,35 @@ Game.prototype.drag = function(dragX, dragY) {
     vec[0] = dragX, vec[1] = -dragY;
     glMatrix.vec4.normalize(vec, vec);
     glMatrix.vec4.transformMat4(vec, vec, cubeMat);
-    for (var i = 0, mv = 0; i < 3; ++i) {
-      if (Math.abs(vec[i]) > mv) {
+    for (var i = 0, mv = 0; i < rubik.axisNum; ++i) {
+      var cosAxis = glMatrix.vec3.dot(vec, rubik.xyzAxis[i + 1]);
+      if (Math.abs(cosAxis) > mv) {
         axisIdx = i;
-        mv = Math.abs(vec[i]);
-        layerDiff = Math.sign(vec[i]);
+        layerDiff = Math.sign(cosAxis);
+        mv = cosAxis * layerDiff;
         layer = layerDiff < 0 ? 0 : rubik.orderNum - 1;
       }
     }
 
-    if (game.mayCircle) {
-      if (game.mayCircle[1] == axisIdx) {
-        if (game.mayCircle[4] < 5) {
-          game.mayCircle[4]++;
+    if (this.mayCircle) {
+      if (this.mayCircle.axis == axisIdx) {
+        if (this.mayCircle.tick < 9) {
+          this.mayCircle.tick++;
           return;
         }
-        layer = game.mayCircle[5] + layerDiff;
+        layer = this.mayCircle.layer + layerDiff;
         if (layer >= rubik.orderNum) layer = rubik.orderNum - 1;
         else if (layer < 0) layer = 0;
-        game.mayCircle = [A90, axisIdx, game.rubik.moveCount,
-            game.rubik.layerIndices[layer], 0, layer];
+
+        this.mayCircle.changeLayer(layer);
+
         draw2D();
         return;
       }
     }
 
-    game.mayCircle = [A90, axisIdx, game.rubik.moveCount, game.rubik
-        .layerIndices[layer], 0, layer];
+    this.mayCircle = rubik.getCursor(axisIdx, layer);
+
     draw2D();
   }
 }
@@ -1394,7 +1622,7 @@ function GLSuit(canvas) {
 
   this.gl.uniform3fv(this.shaderProgram.uniformLightDirection, [-1, 1, -1]);
   this.gl.uniform4fv(this.shaderProgram.uniformAmbientColor, [0.01, 0.01, 0.01,
-  1.0]);
+    1.0]);
 
   // 初始化矩阵
   this.modelMatrix = glMatrix.mat4.create();
@@ -1491,55 +1719,45 @@ GLSuit.prototype.setupShaders = function() {
 
   // 创建程序并连接着色器
   var gl = this.gl;
-  var shaderProgram = gl.createProgram();
-  gl.attachShader(shaderProgram, vertexShader);
-  gl.attachShader(shaderProgram, fragmentShader);
-  gl.linkProgram(shaderProgram);
+  var shdpr = gl.createProgram();
+  gl.attachShader(shdpr, vertexShader);
+  gl.attachShader(shdpr, fragmentShader);
+  gl.linkProgram(shdpr);
 
   // 连接失败的检测
-  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+  if (!gl.getProgramParameter(shdpr, gl.LINK_STATUS)) {
     alert("Failed to setup shaders");
   }
 
   // 使用着色器
-  gl.useProgram(shaderProgram);
+  gl.useProgram(shdpr);
 
   // 获取 attribute 属性的位置
-  shaderProgram.vertexPositionAttribute = gl.getAttribLocation(
-    shaderProgram, "aVertexPosition");
-  shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram,
-    "aVertexColor");
-  shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram,
-    "aVertexNormal");
+  shdpr.vertexPositionAttribute = gl.getAttribLocation(shdpr,
+    "aVertexPosition");
+  shdpr.vertexColorAttribute = gl.getAttribLocation(shdpr, "aVertexColor");
+  shdpr.vertexNormalAttribute = gl.getAttribLocation(shdpr, "aVertexNormal");
   // 设定 aVertexColor 属性为数组类型的变量数据
-  gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
-  gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
-  gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+  gl.enableVertexAttribArray(shdpr.vertexPositionAttribute);
+  gl.enableVertexAttribArray(shdpr.vertexColorAttribute);
+  gl.enableVertexAttribArray(shdpr.vertexNormalAttribute);
 
   // 获取 uniform 属性的位置
   // matrix
-  shaderProgram.uniformMMatrix = gl.getUniformLocation(shaderProgram,
-    "uMMatrix");
-  shaderProgram.uniformVMatrix = gl.getUniformLocation(shaderProgram,
-    "uVMatrix");
-  shaderProgram.uniformPMatrix = gl.getUniformLocation(shaderProgram,
-    "uPMatrix");
+  shdpr.uniformMMatrix = gl.getUniformLocation(shdpr, "uMMatrix");
+  shdpr.uniformVMatrix = gl.getUniformLocation(shdpr, "uVMatrix");
+  shdpr.uniformPMatrix = gl.getUniformLocation(shdpr, "uPMatrix");
   // inv matrix
-  shaderProgram.uniformInvMMatrix = gl.getUniformLocation(shaderProgram,
-    'invMMatrix');
-  shaderProgram.uniformInvVMatrix = gl.getUniformLocation(shaderProgram,
-    'invVMatrix');
-  shaderProgram.uniformInvPMatrix = gl.getUniformLocation(shaderProgram,
-    'invPMatrix');
+  shdpr.uniformInvMMatrix = gl.getUniformLocation(shdpr, 'invMMatrix');
+  shdpr.uniformInvVMatrix = gl.getUniformLocation(shdpr, 'invVMatrix');
+  shdpr.uniformInvPMatrix = gl.getUniformLocation(shdpr, 'invPMatrix');
   // vector
-  shaderProgram.uniformLightDirection = gl.getUniformLocation(shaderProgram,
+  shdpr.uniformEyeDirection = gl.getUniformLocation(shdpr, 'eyeDirection');
+  shdpr.uniformAmbientColor = gl.getUniformLocation(shdpr, 'ambientColor');
+  shdpr.uniformLightDirection = gl.getUniformLocation(shdpr,
     'lightDirection');
-  shaderProgram.uniformEyeDirection = gl.getUniformLocation(shaderProgram,
-    'eyeDirection');
-  shaderProgram.uniformAmbientColor = gl.getUniformLocation(shaderProgram,
-    'ambientColor');
 
-  this.shaderProgram = shaderProgram;
+  this.shaderProgram = shdpr;
 }
 
 GLSuit.prototype.arrayToBuffer = function(array, unit) {
@@ -1611,19 +1829,23 @@ GLSuit.prototype.setUniversalNormal = function(normal) {
 }
 
 GLSuit.prototype.setNormals = function(normals) {
-  this.gl.enableVertexAttribArray(this.shaderProgram.vertexNormalAttribute);
+  this.gl.enableVertexAttribArray(this.shaderProgram
+    .vertexNormalAttribute);
   this.gl.bindBuffer(this.gl.ARRAY_BUFFER, normals);
   this.gl.vertexAttribPointer(this.shaderProgram.vertexNormalAttribute,
     normals.itemSize, this.gl.FLOAT, false, 0, 0);
 }
 
 GLSuit.prototype.setUniversalColor = function(color) {
-  this.gl.disableVertexAttribArray(this.shaderProgram.vertexColorAttribute);
-  this.gl.vertexAttrib4f(this.shaderProgram.vertexColorAttribute, ...color);
+  this.gl.disableVertexAttribArray(this.shaderProgram
+    .vertexColorAttribute);
+  this.gl.vertexAttrib4f(this.shaderProgram.vertexColorAttribute, ...
+    color);
 }
 
 GLSuit.prototype.setColors = function(colors) {
-  this.gl.enableVertexAttribArray(this.shaderProgram.vertexColorAttribute);
+  this.gl.enableVertexAttribArray(this.shaderProgram
+    .vertexColorAttribute);
   this.gl.bindBuffer(this.gl.ARRAY_BUFFER, colors);
   this.gl.vertexAttribPointer(this.shaderProgram.vertexColorAttribute,
     colors.itemSize, this.gl.FLOAT, false, 0, 0);
@@ -1642,18 +1864,17 @@ GLSuit.prototype.drawObject = function(vertices, indices) {
 }
 
 GLSuit.prototype.render = function() {
-  var gl = this.gl;
   var shaderProgram = this.shaderProgram;
 
-  gl.clearColor(0.4, 0.4, 0.4, 1);
-  gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  this.gl.clearColor(0.4, 0.4, 0.4, 1);
+  this.gl.viewport(0, 0, this.gl.viewportWidth, this.gl.viewportHeight);
+  this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
   // 设置为正交矩阵
   //glMatrix.mat4.ortho(projectionMatrix, -8, 8, -8, 8, 0.1, 100);
   // 设置为透视矩阵
-  glMatrix.mat4.perspective(this.projectionMatrix, 60 * Math.PI / 180, gl
-    .viewportWidth / gl.viewportHeight, 0.1, 100);
+  glMatrix.mat4.perspective(this.projectionMatrix, 60 * Math.PI / 180, this.gl
+    .viewportWidth / this.gl.viewportHeight, 0.1, 100);
   this.uploadProjectionMatrixToShader();
 
 
@@ -1661,11 +1882,9 @@ GLSuit.prototype.render = function() {
 
 
   // 初始化模型视图矩阵
-  var perspectiveAngle = game.perspectiveAngle;
-  var eyePoint = [radius * Math.sin(perspectiveAngle),
-                  8 * Math.sin(perspectiveAngle / 3),
-                  radius * Math.cos(perspectiveAngle)];
-  gl.uniform3fv(shaderProgram.uniformEyeDirection, eyePoint);
+  var eyePoint = game.eyePoint();
+
+  this.gl.uniform3fv(shaderProgram.uniformEyeDirection, eyePoint);
   glMatrix.mat4.lookAt(this.viewMatrix, eyePoint, [0, 0, 0], [0, 1, 0]);
   glMatrix.mat4.multiply(this.viewMatrix, this.viewMatrix, this
     .rotateMatrix);
