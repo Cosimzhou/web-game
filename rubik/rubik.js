@@ -447,16 +447,14 @@ DodecahedronShape.prototype.surfacePositions = [
 //   Cursor
 function Cursor(rubik, axis, layer) {
   this.rubik = rubik;
-  this.axis = axis; // old 1
-  this.layer = layer; // old 5
-  this.layerOffset = rubik.layerIndices[layer]; // old 3
-  this.angle = 0; // old 0
-  this.tick = 0; // old 4
+  this.axis = axis;
+  this.layer = layer;
+  this.angle = 0;
+  this.tick = 0;
 }
 
 Cursor.prototype.changeLayer = function(lyr) {
   this.layer = lyr;
-  this.layerOffset = this.rubik.layerIndices[this.layer];
 }
 
 Cursor.prototype.isRevert = function(cur) {
@@ -507,7 +505,7 @@ Rubik.prototype.fillMove = function(ang, axisIdx, layer) {
   }
 
   var moves = { meta: cursor };
-  var cubes = this.findLayer(cursor.axis, cursor.layerOffset);
+  var cubes = this.findLayer(cursor.axis, cursor.layer);
   for (var ci of cubes) {
     moves[ci] = cursor;
   }
@@ -515,22 +513,19 @@ Rubik.prototype.fillMove = function(ang, axisIdx, layer) {
   return moves;
 }
 
-Rubik.prototype.findLayer = function(axis, layerOffset) {
+Rubik.prototype.findLayer = function(axis, layer) {
   var m = glMatrix.mat4.create();
   var result = [];
 
-  layerOffset *= this.R;
+  var axisVec = this.xyzAxis[axis + 1];
+  var layerOffset = this.layerIndices[layer] * this.R;
   for (var tfi in this.transformInfos) {
     glMatrix.mat4.identity(m);
     this.assemble(tfi, m);
 
-    var v = glMatrix.vec4.create();
-    v[3] = 1;
-
-    glMatrix.vec4.transformMat4(v, v, m);
-    var project = glMatrix.vec3.dot(v, this.xyzAxis[axis + 1]);
-    var value = Math.abs(layerOffset - project);
-    if (value <= 0.65) {
+    var project = glMatrix.vec3.dot(m.slice(12, 15), axisVec);
+    var value = project - layerOffset;
+    if (-0.65 < value && value < 0.3) {
       result.push(tfi);
     }
   }
@@ -837,12 +832,7 @@ function TetrahedronRubik(order) {
 
 TetrahedronRubik.prototype.setOrder = function(n) {
   this.orderNum = n;
-  if (this.orderNum % 2) {
-    // Odd tetrahedron order
-    this.R = 1.05;
-  } else {
-    this.R = 1.05;
-  }
+  this.R = 1.05;
 
   // init layer indices
   this.layerIndices = [];
@@ -945,7 +935,7 @@ TetrahedronRubik.prototype.initTransforms = function() {
       glMatrix.vec3.lerp(pm, pp0, pp2, lambda);
       for (var j = 0; j <= i; ++j) {
         trans = [];
-        glMatrix.vec3.lerp(trans, pn, pm, j / i);
+        glMatrix.vec3.lerp(trans, pn, pm, i ? j / i : 1);
         this.transformInfos.push([saxis, Math.PI, trans, clr]);
       }
     }
@@ -999,15 +989,18 @@ function RingShape() {
   this.normalBuffer = null;
   this.vertexIndexBuffer = null;
   this.colorBuffer = null;
+  // miscelenious
+  this.degree = 0;
 }
 
 RingShape.prototype.transform = function(circle, rubik, matrix) {
   var axis = rubik.xyzAxis[circle.axis + 1];
-  var rate = circle.layerOffset * rubik.R;
+  var rate = circle.rubik.layerIndices[circle.layer] * rubik.R;
 
   glMatrix.mat4.translate(matrix, matrix, [axis[0] * rate, axis[1] * rate,
     axis[2] * rate]);
   glMatrix.mat4.rotate(matrix, matrix, ...rubik.ringRotate[circle.axis]);
+  glMatrix.mat4.rotateZ(matrix, matrix, (this.degree++) * Math.PI / 180);
 }
 
 RingShape.prototype.render = function() {
@@ -1018,11 +1011,16 @@ RingShape.prototype.render = function() {
 
   gl.depthMask(false);
 
+  gls.useShader(gls.lightShader);
+  gls.uploadModelMatrixToShader();
+  gls.uploadViewMatrixToShader();
+  gls.uploadProjectionMatrixToShader();
+
   gl.enable(gl.CULL_FACE);
-  gls.setNormals(this.normalBuffer);
   gls.setColors(this.colorBuffer);
   gls.drawObject(this.vertexBuffer, this.vertexIndexBuffer);
   gl.disable(gl.CULL_FACE);
+  gls.useShader(gls.objectShader);
 
   gl.depthMask(true);
   gl.disable(gl.BLEND);
@@ -1032,7 +1030,6 @@ RingShape.prototype.setupBuffer = function(radius) {
   var array = [];
   var colors = [];
   var indices = [];
-  var normals = [];
   var CAP = 36;
   var dR = 2,
     h = 0.1 / 6 * radius,
@@ -1050,10 +1047,6 @@ RingShape.prototype.setupBuffer = function(radius) {
     array.push(R1 * cang, R1 * sang, 0);
     array.push(R2 * cang, R2 * sang, h);
     array.push(R2 * cang, R2 * sang, -h);
-
-    normals.push(-cang, -sang, 0);
-    normals.push(cosTheta * cang, cosTheta * sang, sinTheta);
-    normals.push(cosTheta * cang, cosTheta * sang, -sinTheta);
 
     colors.push(0.0, 1.0, 1.0, (i % 2 ? 0.1 : 0.5));
     colors.push(0.0, 1.0, 1.0, 0.7);
@@ -1087,7 +1080,6 @@ RingShape.prototype.setupBuffer = function(radius) {
     gl.deleteBuffer(this.colorBuffer);
   }
   this.vertexBuffer = gls.arrayToBuffer(array, 3);
-  this.normalBuffer = gls.arrayToBuffer(normals, 3);
   this.colorBuffer = gls.arrayToBuffer(colors, 4);
 
   if (this.vertexIndexBuffer) {
@@ -1614,53 +1606,44 @@ function update() {
 /////////////////////////////////////////////////
 // WebGL & glMatrix related
 /////////////////////////////////////////////////
-function GLSuit(canvas) {
-  this.gl = this.createGLContext(canvas);
-
-  this.setupShaders();
-  this.gl.enable(this.gl.DEPTH_TEST);
-
-  this.gl.uniform3fv(this.shaderProgram.uniformLightDirection, [-1, 1, -1]);
-  this.gl.uniform4fv(this.shaderProgram.uniformAmbientColor, [0.01, 0.01, 0.01,
-    1.0]);
-
-  // 初始化矩阵
-  this.modelMatrix = glMatrix.mat4.create();
-  this.viewMatrix = glMatrix.mat4.create();
-  this.projectionMatrix = glMatrix.mat4.create();
-
-  this.invModelMatrix = glMatrix.mat4.create();
-  this.invViewMatrix = glMatrix.mat4.create();
-  this.invProjMatrix = glMatrix.mat4.create();
-
-  this.rotateMatrix = glMatrix.mat4.create();
-
-  this.modelMatrixStack = [];
+function GLShader(gl, vs, fs) {
+  this.gl = gl;
+  this.vertexShader = vs;
+  this.fragmentShader = fs;
+  this.program = null;
 }
 
-GLSuit.prototype.createGLContext = function(canvas) {
-  var names = ["webgl", "experimental-webgl"];
-  var context = null;
-  for (var i = 0; i < names.length; i++) {
-    try {
-      context = canvas.getContext(names[i]);
-    } catch (e) {}
-    if (context) {
-      break;
-    }
+GLShader.prototype.init = function() {
+  // 从 DOM 上创建对应的着色器
+  if (typeof this.vertexShader === "string") {
+    this.vertexShader = this.loadShaderFromDOM(this.vertexShader);
   }
 
-  if (context) {
-    // 添加动态属性记录画布的大小
-    context.viewportWidth = canvas.width;
-    context.viewportHeight = canvas.height;
-  } else {
-    alert("Failed to create WebGL context!");
+  if (typeof this.fragmentShader === "string") {
+    this.fragmentShader = this.loadShaderFromDOM(this.fragmentShader);
   }
-  return context;
+
+  // 创建程序并连接着色器
+  var gl = this.gl;
+  var shdpr = gl.createProgram();
+  gl.attachShader(shdpr, this.vertexShader);
+  gl.attachShader(shdpr, this.fragmentShader);
+  gl.linkProgram(shdpr);
+
+  // 连接失败的检测
+  if (!gl.getProgramParameter(shdpr, gl.LINK_STATUS)) {
+    alert("Failed to setup shaders");
+  }
+
+  // 使用着色器
+  gl.useProgram(shdpr);
+
+  // Virtual function
+  this.getArguments(shdpr);
+  this.program = shdpr;
 }
 
-GLSuit.prototype.loadShaderFromDOM = function(id) {
+GLShader.prototype.loadShaderFromDOM = function(id) {
   // 获取 DOM
   var shaderScript = document.getElementById(id);
   if (!shaderScript) {
@@ -1712,52 +1695,121 @@ GLSuit.prototype.loadShaderFromDOM = function(id) {
   return shader;
 }
 
-GLSuit.prototype.setupShaders = function() {
-  // 从 DOM 上创建对应的着色器
-  var vertexShader = this.loadShaderFromDOM("shader-vs");
-  var fragmentShader = this.loadShaderFromDOM("shader-fs");
 
-  // 创建程序并连接着色器
-  var gl = this.gl;
-  var shdpr = gl.createProgram();
-  gl.attachShader(shdpr, vertexShader);
-  gl.attachShader(shdpr, fragmentShader);
-  gl.linkProgram(shdpr);
+/////////////////////////////////////////////////
+function GLSuit(canvas) {
+  this.gl = this.createGLContext(canvas);
 
-  // 连接失败的检测
-  if (!gl.getProgramParameter(shdpr, gl.LINK_STATUS)) {
-    alert("Failed to setup shaders");
+  this.setupShaders();
+  this.gl.enable(this.gl.DEPTH_TEST);
+
+
+  // 初始化矩阵
+  this.modelMatrix = glMatrix.mat4.create();
+  this.viewMatrix = glMatrix.mat4.create();
+  this.projectionMatrix = glMatrix.mat4.create();
+
+  this.invModelMatrix = glMatrix.mat4.create();
+  this.invViewMatrix = glMatrix.mat4.create();
+  this.invProjMatrix = glMatrix.mat4.create();
+
+  this.rotateMatrix = glMatrix.mat4.create();
+
+  this.modelMatrixStack = [];
+}
+
+GLSuit.prototype.createGLContext = function(canvas) {
+  var names = ["webgl", "experimental-webgl"];
+  var context = null;
+  for (var i = 0; i < names.length; i++) {
+    try {
+      context = canvas.getContext(names[i]);
+    } catch (e) {}
+    if (context) {
+      break;
+    }
   }
 
-  // 使用着色器
-  gl.useProgram(shdpr);
+  if (context) {
+    // 添加动态属性记录画布的大小
+    context.viewportWidth = canvas.width;
+    context.viewportHeight = canvas.height;
+  } else {
+    alert("Failed to create WebGL context!");
+  }
+  return context;
+}
 
-  // 获取 attribute 属性的位置
-  shdpr.vertexPositionAttribute = gl.getAttribLocation(shdpr,
-    "aVertexPosition");
-  shdpr.vertexColorAttribute = gl.getAttribLocation(shdpr, "aVertexColor");
-  shdpr.vertexNormalAttribute = gl.getAttribLocation(shdpr, "aVertexNormal");
-  // 设定 aVertexColor 属性为数组类型的变量数据
-  gl.enableVertexAttribArray(shdpr.vertexPositionAttribute);
-  gl.enableVertexAttribArray(shdpr.vertexColorAttribute);
-  gl.enableVertexAttribArray(shdpr.vertexNormalAttribute);
+GLSuit.prototype.setupShaders = function() {
+  // 创建程序并连接着色器
+  var gl = this.gl;
+  var shdpr = new GLShader(gl, "shader-vs", "shader-fs");
+  shdpr.getArguments = function(shd) {
+    // 获取 attribute 属性的位置
+    this.vertexPositionAttribute = gl.getAttribLocation(shd,
+      "aVertexPosition");
+    this.vertexColorAttribute = gl.getAttribLocation(shd,
+      "aVertexColor");
+    this.vertexNormalAttribute = gl.getAttribLocation(shd,
+      "aVertexNormal");
+    // 设定 aVertexColor 属性为数组类型的变量数据
+    gl.enableVertexAttribArray(this.vertexPositionAttribute);
+    gl.enableVertexAttribArray(this.vertexColorAttribute);
+    gl.enableVertexAttribArray(this.vertexNormalAttribute);
 
-  // 获取 uniform 属性的位置
-  // matrix
-  shdpr.uniformMMatrix = gl.getUniformLocation(shdpr, "uMMatrix");
-  shdpr.uniformVMatrix = gl.getUniformLocation(shdpr, "uVMatrix");
-  shdpr.uniformPMatrix = gl.getUniformLocation(shdpr, "uPMatrix");
-  // inv matrix
-  shdpr.uniformInvMMatrix = gl.getUniformLocation(shdpr, 'invMMatrix');
-  shdpr.uniformInvVMatrix = gl.getUniformLocation(shdpr, 'invVMatrix');
-  shdpr.uniformInvPMatrix = gl.getUniformLocation(shdpr, 'invPMatrix');
-  // vector
-  shdpr.uniformEyeDirection = gl.getUniformLocation(shdpr, 'eyeDirection');
-  shdpr.uniformAmbientColor = gl.getUniformLocation(shdpr, 'ambientColor');
-  shdpr.uniformLightDirection = gl.getUniformLocation(shdpr,
-    'lightDirection');
+    // 获取 uniform 属性的位置
+    // matrix
+    this.uniformMMatrix = gl.getUniformLocation(shd, "uMMatrix");
+    this.uniformVMatrix = gl.getUniformLocation(shd, "uVMatrix");
+    this.uniformPMatrix = gl.getUniformLocation(shd, "uPMatrix");
+    // inv matrix
+    this.uniformInvMMatrix = gl.getUniformLocation(shd, 'invMMatrix');
+    this.uniformInvVMatrix = gl.getUniformLocation(shd, 'invVMatrix');
+    this.uniformInvPMatrix = gl.getUniformLocation(shd, 'invPMatrix');
+    // vector
+    this.uniformEyeDirection = gl.getUniformLocation(shd,
+      'eyeDirection');
+    this.uniformAmbientColor = gl.getUniformLocation(shd,
+      'ambientColor');
+    this.uniformLightDirection = gl.getUniformLocation(shd,
+      'lightDirection');
 
-  this.shaderProgram = shdpr;
+    // Setup default value
+    gl.uniform3fv(this.uniformLightDirection, [-1, 1, -1]);
+    gl.uniform4fv(this.uniformAmbientColor, [0.01, 0.01, 0.01, 1.0]);
+  }
+  shdpr.init();
+  this.objectShader = shdpr;
+
+
+  shdpr = new GLShader(gl, "light-vs", "light-fs");
+  shdpr.getArguments = function(shd) {
+    // 获取 attribute 属性的位置
+    this.vertexPositionAttribute = gl.getAttribLocation(shd,
+      "aVertexPosition");
+    this.vertexColorAttribute = gl.getAttribLocation(shd,
+      "aVertexColor");
+    //
+    // 设定 aVertexColor 属性为数组类型的变量数据
+    gl.enableVertexAttribArray(this.vertexPositionAttribute);
+    gl.enableVertexAttribArray(this.vertexColorAttribute);
+
+    // 获取 uniform 属性的位置
+    // matrix
+    this.uniformMMatrix = gl.getUniformLocation(shd, "uMMatrix");
+    this.uniformVMatrix = gl.getUniformLocation(shd, "uVMatrix");
+    this.uniformPMatrix = gl.getUniformLocation(shd, "uPMatrix");
+    // vector
+  }
+  shdpr.init();
+  this.lightShader = shdpr;
+
+  this.useShader(this.objectShader);
+}
+
+GLSuit.prototype.useShader = function(shr) {
+  this.gl.useProgram(shr.program);
+  this.shaderProgram = shr;
 }
 
 GLSuit.prototype.arrayToBuffer = function(array, unit) {
@@ -1783,27 +1835,38 @@ GLSuit.prototype.indexToBuffer = function(array) {
 }
 
 GLSuit.prototype.uploadViewMatrixToShader = function() {
-  this.gl.uniformMatrix4fv(this.shaderProgram.uniformVMatrix, false, this
+  var shdpr = this.shaderProgram;
+  this.gl.uniformMatrix4fv(shdpr.uniformVMatrix, false, this
     .viewMatrix);
-  glMatrix.mat4.invert(this.invViewMatrix, this.viewMatrix);
-  this.gl.uniformMatrix4fv(this.shaderProgram.uniformInvVMatrix, false,
-    this.invViewMatrix);
+
+  if (shdpr == this.objectShader) {
+    glMatrix.mat4.invert(this.invViewMatrix, this.viewMatrix);
+    this.gl.uniformMatrix4fv(shdpr.uniformInvVMatrix, false, this
+      .invViewMatrix);
+  }
 }
 
 GLSuit.prototype.uploadModelMatrixToShader = function() {
-  this.gl.uniformMatrix4fv(this.shaderProgram.uniformMMatrix, false,
-    this.modelMatrix);
-  glMatrix.mat4.invert(this.invModelMatrix, this.modelMatrix);
-  this.gl.uniformMatrix4fv(this.shaderProgram.uniformInvMMatrix, false,
-    this.invModelMatrix);
+  var shdpr = this.shaderProgram;
+  this.gl.uniformMatrix4fv(shdpr.uniformMMatrix, false, this.modelMatrix);
+
+  if (shdpr == this.objectShader) {
+    glMatrix.mat4.invert(this.invModelMatrix, this.modelMatrix);
+    this.gl.uniformMatrix4fv(shdpr.uniformInvMMatrix, false, this
+      .invModelMatrix);
+  }
 }
 
 GLSuit.prototype.uploadProjectionMatrixToShader = function() {
-  this.gl.uniformMatrix4fv(this.shaderProgram.uniformPMatrix, false,
-    this.projectionMatrix);
-  glMatrix.mat4.invert(this.invProjMatrix, this.projectionMatrix);
-  this.gl.uniformMatrix4fv(this.shaderProgram.uniformInvPMatrix, false,
-    this.invProjMatrix);
+  var shdpr = this.shaderProgram;
+  this.gl.uniformMatrix4fv(shdpr.uniformPMatrix, false, this
+    .projectionMatrix);
+
+  if (shdpr == this.objectShader) {
+    glMatrix.mat4.invert(this.invProjMatrix, this.projectionMatrix);
+    this.gl.uniformMatrix4fv(shdpr.uniformInvPMatrix, false, this
+      .invProjMatrix);
+  }
 }
 
 // 将 modelMatrix 矩阵压入堆栈
@@ -1877,9 +1940,7 @@ GLSuit.prototype.render = function() {
     .viewportWidth / this.gl.viewportHeight, 0.1, 100);
   this.uploadProjectionMatrixToShader();
 
-
   glMatrix.mat4.identity(this.viewMatrix);
-
 
   // 初始化模型视图矩阵
   var eyePoint = game.eyePoint();
