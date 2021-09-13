@@ -15,16 +15,26 @@ var SQRT2_2 = SQRT2 / 2.0;
 var SQRT2_3 = SQRT2 / 3.0;
 var SQRT2_4 = SQRT2 / 4.0;
 var SQRT3_2 = SQRT3 / 2.0;
+var SQRT3_6 = SQRT3 / 6.0;
 var SQRT6_3 = SQRT6 / 3.0;
+
+var PHI = 0.5 + Math.sqrt(5.0) / 2.0;
+var PHI_1 = 1.0 / PHI;
+var MPHI_1 = Math.hypot(PHI, PHI_1);
 
 var DN1_3 = 1.0 / 3.0;
 var DN2_3 = 2.0 / 3.0;
+var DN1_6 = 1.0 / 6.0;
 
+var A1 = Math.PI / 180.0;
 var A90 = Math.PI / 2.0;
 var A120 = Math.PI * DN2_3;
 var A180 = Math.PI;
 var A270 = -A90;
+var A72 = Math.PI * 2.0 / 5.0;
 var A48 = 0.8379118333508581;
+
+var T4CAngle = Math.acos(DN1_3);
 
 // Color Const
 var colorArray = [
@@ -58,6 +68,19 @@ function incept(base, derive) {
   }
 }
 
+function Shape() {}
+
+Shape.prototype.setupBuffers = function(gls) {
+  // Vertex Buffer
+  this.vertexPositionBuffers = this.surfacePositions.map(function(
+    array) {
+    return gls.arrayToBuffer(array, 3)
+  });
+
+  // Vertex Index Buffer
+  this.vertexIndexBuffer = gls.indexToBuffer(this.vertexIndices);
+}
+
 /**
  *
  *  The indices of each side on cube surface are as following.
@@ -86,6 +109,7 @@ function incept(base, derive) {
  */
 
 function CubeShape() {
+  incept(Shape, this);
   this.axisNum = 3;
   this.angNum = 3;
   this.angUnit = A90;
@@ -118,6 +142,7 @@ CubeShape.prototype.surfaceNormals = [
   [0.0, -1.0, 0.0],
 ];
 
+CubeShape.prototype.vertexIndices = [0, 1, 2, 0, 2, 3];
 CubeShape.prototype.surfacePositions = [
     // Front face
     [1.0, 1.0, 1.0, //v0
@@ -156,20 +181,6 @@ CubeShape.prototype.surfacePositions = [
     -1.0, -1.0, 1.0], //v23
 ];
 
-CubeShape.prototype.setupBuffers = function(gls) {
-  // Vertex Buffer
-  this.vertexPositionBuffers = [
-    gls.arrayToBuffer(this.surfacePositions[0], 3),
-    gls.arrayToBuffer(this.surfacePositions[1], 3),
-    gls.arrayToBuffer(this.surfacePositions[2], 3),
-    gls.arrayToBuffer(this.surfacePositions[3], 3),
-    gls.arrayToBuffer(this.surfacePositions[4], 3),
-    gls.arrayToBuffer(this.surfacePositions[5], 3),
-  ];
-
-  // Vertex Index Buffer
-  this.vertexIndexBuffer = gls.indexToBuffer([0, 1, 2, 0, 2, 3]);
-}
 
 CubeShape.prototype.focusView = function(f, gls) {
   glMatrix.mat4.identity(gls.rotateMatrix);
@@ -287,9 +298,9 @@ CubeShape.prototype.circleProject = function(side, axis, layer) {
  *  Surface 4: P1, P2, P3
  */
 
-var T4CAngle = Math.acos(DN1_3);
 
 function TetrahedronShape() {
+  incept(Shape, this);
   this.axisNum = 4;
   this.angNum = 2;
   this.angUnit = A120;
@@ -314,6 +325,22 @@ TetrahedronShape.prototype.xyzAxis = [
   [SQRT2_3, -SQRT6_3, DN1_3]];
 
 
+TetrahedronShape.prototype.surfaceMatrix = [
+  // [x axis, y axis, z axis]
+  [[0, -1, 0],
+   [DN1_3, 0, SQRT2 * DN2_3],
+   [-SQRT2 * DN2_3, 0, DN1_3, 0]],
+  [[-0, 1, 0],
+   [1, 0, 0],
+   [0, 0, -1, 0]],
+  [[-SQRT3_2, 0.5, 0],
+   [-DN1_6, -SQRT3_6, 2 * SQRT2_3],
+   [SQRT2_3, SQRT6_3, DN1_3, 0]],
+  [[SQRT3_2, 0.5, -0],
+   [-DN1_6, SQRT3_6, 2 * SQRT2_3],
+   [SQRT2_3, -SQRT6_3, DN1_3, 0]]
+];
+
 TetrahedronShape.prototype.ringRotate = [
   [T4CAngle, [0, -1, 0]],
   [0, [0, 0, 0]],
@@ -330,6 +357,7 @@ TetrahedronShape.prototype.surfaceNormals = [
   ];
 
 
+TetrahedronShape.prototype.vertexIndices = [0, 1, 2];
 TetrahedronShape.prototype.surfacePositions = [
   // Surface 1
   [-0.5, SQRT3_2, -SQRT2_4,
@@ -352,18 +380,6 @@ TetrahedronShape.prototype.surfacePositions = [
    0.0, 0.0, SQRT2 * 0.75]
 ];
 
-TetrahedronShape.prototype.setupBuffers = function(gls) {
-  // Vertex Buffer
-  this.vertexPositionBuffers = [
-    gls.arrayToBuffer(this.surfacePositions[0], 3),
-    gls.arrayToBuffer(this.surfacePositions[1], 3),
-    gls.arrayToBuffer(this.surfacePositions[2], 3),
-    gls.arrayToBuffer(this.surfacePositions[3], 3),
-  ];
-
-  // Vertex Index Buffer
-  this.vertexIndexBuffer = gls.indexToBuffer([0, 1, 2]);
-}
 
 TetrahedronShape.prototype.focusView = function(f, gls) {
   glMatrix.mat4.identity(gls.rotateMatrix);
@@ -394,25 +410,19 @@ TetrahedronShape.prototype.focusView = function(f, gls) {
 TetrahedronShape.prototype.focusASide = function(f, gls) {
   glMatrix.mat4.identity(gls.rotateMatrix);
   switch (f) {
+    case 0: //
+      glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A180, this
+        .xyzAxis[2]);
+      break;
     case 1: //
       glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A180, this
         .xyzAxis[2]);
       break;
     case 2: //
-      glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A90, this
-        .xyzAxis[2]);
+      glMatrix.mat4.rotateY(gls.rotateMatrix, gls.rotateMatrix, A180);
       break;
     case 3: //
-      glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A270, this
-        .xyzAxis[2]);
-      break;
-    case 4: //
-      glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A90, this
-        .xyzAxis[1]);
-      break;
-    case 5: //
-      glMatrix.mat4.rotate(gls.rotateMatrix, gls.rotateMatrix, A270, this
-        .xyzAxis[1]);
+      glMatrix.mat4.rotateX(gls.rotateMatrix, gls.rotateMatrix, A180);
       break;
     default:
       break;
@@ -424,21 +434,62 @@ TetrahedronShape.prototype.focusASide = function(f, gls) {
  *
  *
  */
-var phi = 0.5 + Math.sqrt(5) / 2;
-var phi_1 = 1.0 / phi;
 
 function DodecahedronShape() {
+  incept(Shape, this);
+  this.axisNum = 6;
+  this.angNum = 5;
+  this.angUnit = A72;
+  this.surfaceNum = 12;
+  this.modelSide = PHI;
 
+
+  this.setupBuffers(gls);
 }
 
 //var p = [
-//  [0, phi, phi_1],
-//  [phi, phi_1, 0],
-//  [phi_1, 0 phi],
+//  [0, PHI, PHI_1],
+//  [PHI, PHI_1, 0],
+//  [PHI_1, 0 PHI],
 //  [1, 1, 1],
 //];
+DodecahedronShape.prototype.xyzAxis = [
+  [PHI / MPHI_1, PHI_1 / MPHI_1, 0],
+  [PHI / MPHI_1, -PHI_1 / MPHI_1, 0],
+  [-PHI / MPHI_1, PHI_1 / MPHI_1, 0],
+  [-PHI / MPHI_1, -PHI_1 / MPHI_1, 0],
+];
+DodecahedronShape.prototype.surfaceNormals = [
+  [PHI / MPHI_1, PHI_1 / MPHI_1, 0],
+  [PHI / MPHI_1, -PHI_1 / MPHI_1, 0],
+  [-PHI / MPHI_1, PHI_1 / MPHI_1, 0],
+  [-PHI / MPHI_1, -PHI_1 / MPHI_1, 0],
+];
+DodecahedronShape.prototype.vertexIndices = [0, 1, 2, 0, 2, 3, 0, 3, 4];
 DodecahedronShape.prototype.surfacePositions = [
-  []
+  [1.0, 1.0, 1.0,
+    0, PHI, PHI_1,
+    0, PHI, -PHI_1,
+    1.0, 1.0, -1.0,
+    PHI, PHI_1, 0],
+
+  [1.0, -1.0, 1.0,
+    0, -PHI, PHI_1,
+    0, -PHI, -PHI_1,
+    1.0, -1.0, -1.0,
+    PHI, -PHI_1, 0],
+
+  [-1.0, 1.0, 1.0,
+    0, PHI, PHI_1,
+    0, PHI, -PHI_1,
+   -1.0, 1.0, -1.0,
+   -PHI, PHI_1, 0],
+
+  [-1.0, -1.0, 1.0,
+    0, -PHI, PHI_1,
+    0, -PHI, -PHI_1,
+   -1.0, -1.0, -1.0,
+   -PHI, -PHI_1, 0],
 ];
 
 
@@ -455,6 +506,7 @@ function Cursor(rubik, axis, layer) {
 
 Cursor.prototype.changeLayer = function(lyr) {
   this.layer = lyr;
+  this.tick = 0;
 }
 
 Cursor.prototype.isRevert = function(cur) {
@@ -524,8 +576,7 @@ Rubik.prototype.findLayer = function(axis, layer) {
     this.assemble(tfi, m);
 
     var project = glMatrix.vec3.dot(m.slice(12, 15), axisVec);
-    var value = project - layerOffset;
-    if (-0.65 < value && value < 0.3) {
+    if (this._projectInLayer(project, layer, layerOffset)) {
       result.push(tfi);
     }
   }
@@ -545,9 +596,19 @@ Rubik.prototype.draw3D = function() {
     this.assemble(tfi, gls.modelMatrix);
 
     gls.uploadModelMatrixToShader();
-    // Abstract method
     this.drawParticle3D(this.transformInfos[tfi]);
     gls.popModelMatrix();
+  }
+}
+
+Rubik.prototype.drawParticle3D = function(tfInfo) {
+  var colors = tfInfo[3];
+  for (var i = 0; i < this.surfaceNum; i++) {
+    var color = i < colors.length ? colors[i] : 0;
+    gls.setUniversalNormal(this.surfaceNormals[i]);
+    gls.setUniversalColor(colorArray[color]);
+    gls.drawObject(this.vertexPositionBuffers[i], this
+      .vertexIndexBuffer);
   }
 }
 
@@ -576,6 +637,10 @@ function CubeRubik(order) {
   this.game = null;
 }
 
+CubeRubik.prototype._projectInLayer = function(project, layer, layerOffset) {
+  return Math.abs(project - layerOffset) < 0.1;
+}
+
 CubeRubik.prototype.setOrder = function(n) {
   if (n == this.orderNum || n > 7) return;
   this.orderNum = n;
@@ -595,7 +660,6 @@ CubeRubik.prototype.setOrder = function(n) {
   }
 
   this.initTransforms();
-
 }
 
 CubeRubik.prototype.initTransforms = function() {
@@ -655,19 +719,20 @@ CubeRubik.prototype.initTransforms = function() {
   }
 
   this.transformInfos = transformInfos;
-}
 
 
-CubeRubik.prototype.drawParticle3D = function(tfInfo) {
-  var colors = tfInfo[3];
-  for (var i = 0; i < 6; i++) {
-    var color = i < colors.length ? colors[i] : 0;
-    gls.setUniversalNormal(this.surfaceNormals[i]);
-    gls.setUniversalColor(colorArray[color]);
-    gls.drawObject(this.vertexPositionBuffers[i], this.vertexIndexBuffer);
+
+  // 2D
+  sideColorMap = [];
+  for (var s = 0, n = this.orderNum; s < 6; s++) {
+    sideColorMap.push([]);
+    for (var i = 0; i < n; i++) {
+      sideColorMap[s].push(new Int8Array(n));
+    }
   }
-}
 
+  c2dPixelLen = c2dSide / n;
+}
 
 CubeRubik.prototype.draw2D = function() {
   function transformSide(s) {
@@ -703,8 +768,8 @@ CubeRubik.prototype.draw2D = function() {
   }
 
   var ring;
-  if (game.animate && game.animate.currentRotate && game.animate.currentRotate
-    .meta) {
+  if (game.animate && game.animate.currentRotate && game.animate
+    .currentRotate.meta) {
     ring = game.animate.currentRotate.meta;
   } else if (game.mayCircle) {
     ring = game.mayCircle;
@@ -750,7 +815,8 @@ CubeRubik.prototype.draw2D = function() {
  *     Up      |  2   |   3      |    5
  *     Down    |  2   |   6      |    6
  */
-CubeRubik.prototype.projectParticle2D = function(map2d, transInfo, matrix) {
+CubeRubik.prototype.projectParticle2D = function(map2d, transInfo,
+  matrix) {
   var R = this.R;
   var pos = matrix.slice(12, 15).map(function(x) {
     return parseInt(Math.round(x / R));
@@ -830,6 +896,13 @@ function TetrahedronRubik(order) {
   this.setOrder(order);
 }
 
+TetrahedronRubik.prototype._projectInLayer = function(project, layer,
+  layerOffset) {
+  var U = 1 + DN1_3;
+  var N = project + this.orderNum - 1.1;
+  return U * (layer - 1) < N && (layer + 1 == this.orderNum || N < U * layer);
+}
+
 TetrahedronRubik.prototype.setOrder = function(n) {
   this.orderNum = n;
   this.R = 1.05;
@@ -846,6 +919,7 @@ TetrahedronRubik.prototype.setOrder = function(n) {
 TetrahedronRubik.prototype.initTransforms = function() {
   var N = this.orderNum - 1;
   var rt = this.R * N;
+  this.surfaceV = rt / 3;
 
   // Vertices
   for (var s = 0, color, trans; s < 4; s++) {
@@ -911,7 +985,7 @@ TetrahedronRubik.prototype.initTransforms = function() {
     glMatrix.vec3.transformMat4(p1, p1, matrix);
     glMatrix.vec3.transformMat4(p2, p2, matrix);
 
-    var rx = 2.0 / 3 / N;
+    var rx = DN2_3 / N;
     var pp0 = [];
     glMatrix.vec3.lerp(pp0, p1, p2, 0.5);
     glMatrix.vec3.lerp(pp0, p0, pp0, rx);
@@ -940,37 +1014,96 @@ TetrahedronRubik.prototype.initTransforms = function() {
       }
     }
   }
-}
 
-TetrahedronRubik.prototype.drawParticle3D = function(tfInfo) {
-  var colors = tfInfo[3];
-  for (var i = 0; i < 4; i++) {
-    var color = i < colors.length ? colors[i] : 0;
-    gls.setUniversalNormal(this.surfaceNormals[i]);
-    gls.setUniversalColor(colorArray[color]);
-    gls.drawObject(this.vertexPositionBuffers[i], this.vertexIndexBuffer);
+  // 2D
+  sideColorMap = [];
+  for (var s = 0, n = this.orderNum; s < 4; s++) {
+    sideColorMap.push([]);
+    for (var i = 0; i < n; i++) {
+      sideColorMap[s].push(new Int8Array(n * 2 + 1));
+    }
   }
+
+  c2dMargin = (6 * 100 - 500) / 5;
+  c2dSide = 100 - 2 * c2dMargin;
+  c2dPixelLen = c2dSide / n;
 }
 
 TetrahedronRubik.prototype.projectParticle2D = function(map2d, transInfo,
-  matrix) {}
+  matrix) {
+  var pos = matrix.slice(12, 15);
+  var smat = this.surfaceMatrix;
+
+  function findSide(axis) {
+    var mi, mv = 0;
+    var v = glMatrix.vec4.create();
+    var vaxis = smat[axis][2];
+    for (var i = 0; i < 4; i++) {
+      glMatrix.vec4.transformMat4(v, smat[i][2], matrix);
+      var val = glMatrix.vec3.dot(v, vaxis);
+      if (val > mv) {
+        mv = val;
+        mi = i;
+      }
+    }
+    return mi;
+  }
+
+  var R = this.R;
+  var xunit = 1.5 * R / SQRT3;
+
+  function findY(y, n) {
+    for (var i = 0; i < n; i++) {
+      //(1 + DN1_3) * i - n + 1
+      if (y + 0.1 > R * (n - 1 - 1.5 * i)) {
+        return i;
+      }
+    }
+    return i - 1;
+  }
+
+  function findX(x, y) {
+    return y + parseInt(Math.round(x / xunit));
+  }
+
+  for (var axis = 0, s = 0, x = 0, y = 0, c; axis < 4; axis++) {
+    if (glMatrix.vec3.dot(pos, smat[axis][2]) < this.surfaceV)
+      continue;
+
+    x = glMatrix.vec3.dot(pos, smat[axis][0]);
+    y = glMatrix.vec3.dot(pos, smat[axis][1]);
+
+    c = findSide(axis);
+    var iy = findY(y, this.orderNum);
+    var ix = findX(x, iy);
+
+    map2d[axis][iy][ix] = c + 1;
+  }
+}
 
 TetrahedronRubik.prototype.draw2D = function() {
   for (var s = 0; s < 4; s++) {
     ctx2d.save();
     //  Set pixel side
-    ctx2d.translate(c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
+    ctx2d.translate(100 + c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
     ctx2d.scale(c2dPixelLen, c2dPixelLen);
     ctx2d.translate(0.05, 0.05);
 
     for (var y = 0; y < this.orderNum; y++) {
-      for (var x = 0; x < this.orderNum; x++) {
+      for (var xx = 0, xx; xx <= y * 2; xx++) {
         // Draw pixel
         ctx2d.beginPath();
-        ctx2d.fillStyle = colorArray2D[sideColorMap[s][x][y]];
-        ctx2d.moveTo(x, y);
-        ctx2d.lineTo(x, y);
-        ctx2d.lineTo(x, y);
+        ctx2d.fillStyle = colorArray2D[sideColorMap[s][y][xx]];
+        x = (xx - y) / 2;
+        if (xx & 1) {
+          ctx2d.moveTo(x, y + 0.95);
+          ctx2d.lineTo(x - 0.45, y);
+          ctx2d.lineTo(x + 0.45, y);
+        } else {
+          ctx2d.moveTo(x, y);
+          ctx2d.lineTo(x - 0.45, y + 0.95);
+          ctx2d.lineTo(x + 0.45, y + 0.95);
+        }
         ctx2d.closePath();
         ctx2d.fill();
       }
@@ -979,6 +1112,26 @@ TetrahedronRubik.prototype.draw2D = function() {
     ctx2d.restore();
   }
 }
+
+//////////////////////////////////////////////////////////////
+//
+//  DodecahedronRubik
+//
+function DodecahedronRubik() {
+  incept(Rubik, this);
+  incept(DodecahedronShape, this);
+
+  this.orderNum = 0;
+  this.layerIndices = null;
+
+  //this.setOrder();
+  this.game = null;
+}
+
+DodecahedronRubik.prototype.initTransforms = function() {
+
+}
+DodecahedronRubik.prototype.setOrder = function() {}
 
 //////////////////////////////////////////////////////////////
 //
@@ -994,36 +1147,36 @@ function RingShape() {
 }
 
 RingShape.prototype.transform = function(circle, rubik, matrix) {
-  var axis = rubik.xyzAxis[circle.axis + 1];
   var rate = circle.rubik.layerIndices[circle.layer] * rubik.R;
-
-  glMatrix.mat4.translate(matrix, matrix, [axis[0] * rate, axis[1] * rate,
-    axis[2] * rate]);
-  glMatrix.mat4.rotate(matrix, matrix, ...rubik.ringRotate[circle.axis]);
-  glMatrix.mat4.rotateZ(matrix, matrix, (this.degree++) * Math.PI / 180);
+  var translate = [];
+  glMatrix.vec3.scale(translate, rubik.xyzAxis[circle.axis + 1], rate);
+  glMatrix.mat4.translate(matrix, matrix, translate);
+  glMatrix.mat4.rotate(matrix, matrix, ...rubik.ringRotate[circle
+    .axis]);
+  glMatrix.mat4.rotateZ(matrix, matrix, (this.degree++) * A1);
 }
 
 RingShape.prototype.render = function() {
   var gl = gls.gl;
-
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-  gl.depthMask(false);
 
   gls.useShader(gls.lightShader);
   gls.uploadModelMatrixToShader();
   gls.uploadViewMatrixToShader();
   gls.uploadProjectionMatrixToShader();
 
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.depthMask(false);
   gl.enable(gl.CULL_FACE);
+
   gls.setColors(this.colorBuffer);
   gls.drawObject(this.vertexBuffer, this.vertexIndexBuffer);
-  gl.disable(gl.CULL_FACE);
-  gls.useShader(gls.objectShader);
 
+  gl.disable(gl.CULL_FACE);
   gl.depthMask(true);
   gl.disable(gl.BLEND);
+
+  gls.useShader(gls.objectShader);
 }
 
 RingShape.prototype.setupBuffer = function(radius) {
@@ -1174,7 +1327,7 @@ Rotatable.prototype.pushRotate = function(act) {
   var meta = act.meta;
 
   if (this.actions.length) {
-    var neta = this.actions[this.actions.length - 1].meta;
+    var neta = this.actions[0].meta;
     if (meta.similarTo(neta)) {
       if (meta.isRevert(neta)) {
         this.popRotate();
@@ -1186,12 +1339,11 @@ Rotatable.prototype.pushRotate = function(act) {
     }
   }
 
-  this.actions.push(act);
-
+  this.actions.unshift(act);
   for (var ci in act) {
     if (this.rotateTrace[ci] == null)
       this.rotateTrace[ci] = [];
-    this.rotateTrace[ci].push(meta);
+    this.rotateTrace[ci].unshift(meta);
   }
 }
 
@@ -1200,11 +1352,11 @@ Rotatable.prototype.popRotate = function() {
     return null;
   }
 
-  var act = this.actions.pop();
+  var act = this.actions.shift();
   for (var ci in act) {
     var trace = this.rotateTrace[ci];
     if (trace && trace.length) {
-      trace.pop();
+      trace.shift();
     }
   }
 
@@ -1214,7 +1366,7 @@ Rotatable.prototype.popRotate = function() {
 Rotatable.prototype.rotate = function(id, modelMatrix) {
   var trace = this.rotateTrace[id];
   if (trace) {
-    for (var i = trace.length - 1, rot; rot = trace[i]; i--) {
+    for (var i = 0, rot; rot = trace[i]; i++) {
       glMatrix.mat4.rotate(modelMatrix,
         modelMatrix,
         rot.angle,
@@ -1242,11 +1394,12 @@ function draw2D() {
 function startup() {
   var canvas2d = document.getElementById("myCanvas");
   canvas2d.addEventListener("click", function(e) {
-    var x = e.offsetX - c2dMargin;
+    var extraX = game.shape == TetrahedronRubik ? 100 : 0;
+    var x = e.offsetX - c2dMargin - extraX;
     var unit = c2dSide + c2dMargin;
     var side = parseInt(x / unit);
-    if (0 <= side && side < 6 && x % unit <= c2dSide) {
-      focusASide(side);
+    if (0 <= side && side < game.rubik.surfaceNum && x % unit <= c2dSide) {
+      game.focusASide(side);
     }
   });
   ctx2d = canvas2d.getContext("2d");
@@ -1364,7 +1517,7 @@ function Game() {
   this.dragging = false;
 
   this.shape = CubeRubik;
-  this.changeOrder(2);
+  this.changeOrder(3);
 }
 
 Game.prototype.changeShape = function(s) {
@@ -1380,6 +1533,8 @@ Game.prototype.changeShape = function(s) {
 Game.prototype.modelToggle = function(s) {
   if (this.shape == CubeRubik) {
     this.shape = TetrahedronRubik;
+    //} else if (this.shape == TetrahedronRubik) {
+    //  this.shape = DodecahedronRubik;
   } else {
     this.shape = CubeRubik;
   }
@@ -1398,17 +1553,7 @@ Game.prototype.changeOrder = function(n) {
   this.ring = new RingShape();
   this.ring.setupBuffer(n * this.rubik.modelSide);
 
-
-  // 2D
-  sideColorMap = [];
-  for (var s = 0; s < 6; s++) {
-    sideColorMap.push([]);
-    for (var i = 0; i < n; i++) {
-      sideColorMap[s].push(new Int8Array(n));
-    }
-  }
-
-  c2dPixelLen = c2dSide / n;
+  draw2D();
 }
 
 Game.prototype.render = function() {
@@ -1425,7 +1570,6 @@ Game.prototype.render = function() {
   if (selectedCircle) {
     gls.pushModelMatrix();
     this.ring.transform(selectedCircle, this.rubik, gls.modelMatrix);
-    gls.uploadModelMatrixToShader();
     this.ring.render();
     gls.popModelMatrix();
   }
@@ -1528,6 +1672,7 @@ Game.prototype.drag = function(dragX, dragY) {
   glMatrix.mat4.multiply(cubeMat, gls.invViewMatrix, gls.invProjMatrix);
 
   if (this.dragging) {
+    // Rotate the rubik
     vec[0] = dragY, vec[1] = dragX;
     glMatrix.vec4.transformMat4(vec, vec, cubeMat);
     glMatrix.mat4.rotate(gls.rotateMatrix,
@@ -1541,6 +1686,7 @@ Game.prototype.drag = function(dragX, dragY) {
       layerDiff;
     var layer = 0;
 
+    // Select a axis
     vec[0] = dragX, vec[1] = -dragY;
     glMatrix.vec4.normalize(vec, vec);
     glMatrix.vec4.transformMat4(vec, vec, cubeMat);
@@ -1550,29 +1696,32 @@ Game.prototype.drag = function(dragX, dragY) {
         axisIdx = i;
         layerDiff = Math.sign(cosAxis);
         mv = cosAxis * layerDiff;
-        layer = layerDiff < 0 ? 0 : rubik.orderNum - 1;
+        layer = layerDiff > 0 ? 0 : rubik.orderNum - 1;
       }
     }
 
+    // Update cursor
     if (this.mayCircle) {
       if (this.mayCircle.axis == axisIdx) {
         if (this.mayCircle.tick < 9) {
           this.mayCircle.tick++;
           return;
         }
+
         layer = this.mayCircle.layer + layerDiff;
-        if (layer >= rubik.orderNum) layer = rubik.orderNum - 1;
-        else if (layer < 0) layer = 0;
+        if (layer >= rubik.orderNum) {
+          layer = rubik.orderNum - 1;
+        } else if (layer < 0) {
+          layer = 0;
+        }
 
         this.mayCircle.changeLayer(layer);
-
         draw2D();
         return;
       }
     }
 
     this.mayCircle = rubik.getCursor(axisIdx, layer);
-
     draw2D();
   }
 }
@@ -1813,10 +1962,10 @@ GLSuit.prototype.useShader = function(shr) {
 }
 
 GLSuit.prototype.arrayToBuffer = function(array, unit) {
-  var buffer = this.gl.createBuffer();
-  this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer);
-  this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(array), this.gl
-    .STATIC_DRAW);
+  var gl = this.gl;
+  var buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(array), gl.STATIC_DRAW);
   buffer.itemSize = unit;
   buffer.numberOfItems = array.length / unit;
 
@@ -1824,10 +1973,11 @@ GLSuit.prototype.arrayToBuffer = function(array, unit) {
 }
 
 GLSuit.prototype.indexToBuffer = function(array) {
-  var buffer = this.gl.createBuffer();
-  this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, buffer);
-  this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(array),
-    this.gl.STATIC_DRAW);
+  var gl = this.gl;
+  var buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(array),
+    gl.STATIC_DRAW);
   buffer.itemSize = 1;
   buffer.numberOfItems = array.length;
 
@@ -1835,37 +1985,37 @@ GLSuit.prototype.indexToBuffer = function(array) {
 }
 
 GLSuit.prototype.uploadViewMatrixToShader = function() {
+  var gl = this.gl;
   var shdpr = this.shaderProgram;
-  this.gl.uniformMatrix4fv(shdpr.uniformVMatrix, false, this
+  gl.uniformMatrix4fv(shdpr.uniformVMatrix, false, this
     .viewMatrix);
 
   if (shdpr == this.objectShader) {
     glMatrix.mat4.invert(this.invViewMatrix, this.viewMatrix);
-    this.gl.uniformMatrix4fv(shdpr.uniformInvVMatrix, false, this
-      .invViewMatrix);
+    gl.uniformMatrix4fv(shdpr.uniformInvVMatrix, false, this.invViewMatrix);
   }
 }
 
 GLSuit.prototype.uploadModelMatrixToShader = function() {
+  var gl = this.gl;
   var shdpr = this.shaderProgram;
-  this.gl.uniformMatrix4fv(shdpr.uniformMMatrix, false, this.modelMatrix);
+  gl.uniformMatrix4fv(shdpr.uniformMMatrix, false, this
+    .modelMatrix);
 
   if (shdpr == this.objectShader) {
     glMatrix.mat4.invert(this.invModelMatrix, this.modelMatrix);
-    this.gl.uniformMatrix4fv(shdpr.uniformInvMMatrix, false, this
-      .invModelMatrix);
+    gl.uniformMatrix4fv(shdpr.uniformInvMMatrix, false, this.invModelMatrix);
   }
 }
 
 GLSuit.prototype.uploadProjectionMatrixToShader = function() {
+  var gl = this.gl;
   var shdpr = this.shaderProgram;
-  this.gl.uniformMatrix4fv(shdpr.uniformPMatrix, false, this
-    .projectionMatrix);
+  gl.uniformMatrix4fv(shdpr.uniformPMatrix, false, this.projectionMatrix);
 
   if (shdpr == this.objectShader) {
     glMatrix.mat4.invert(this.invProjMatrix, this.projectionMatrix);
-    this.gl.uniformMatrix4fv(shdpr.uniformInvPMatrix, false, this
-      .invProjMatrix);
+    gl.uniformMatrix4fv(shdpr.uniformInvPMatrix, false, this.invProjMatrix);
   }
 }
 
@@ -1917,7 +2067,8 @@ GLSuit.prototype.setColors = function(colors) {
 GLSuit.prototype.drawObject = function(vertices, indices) {
   // Set vertex positions
   this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vertices);
-  this.gl.vertexAttribPointer(this.shaderProgram.vertexPositionAttribute,
+  this.gl.vertexAttribPointer(this.shaderProgram
+    .vertexPositionAttribute,
     vertices.itemSize, this.gl.FLOAT, false, 0, 0);
 
   // Draw surfaces
@@ -1936,8 +2087,8 @@ GLSuit.prototype.render = function() {
   // 设置为正交矩阵
   //glMatrix.mat4.ortho(projectionMatrix, -8, 8, -8, 8, 0.1, 100);
   // 设置为透视矩阵
-  glMatrix.mat4.perspective(this.projectionMatrix, 60 * Math.PI / 180, this.gl
-    .viewportWidth / this.gl.viewportHeight, 0.1, 100);
+  glMatrix.mat4.perspective(this.projectionMatrix, 60 * A1,
+    this.gl.viewportWidth / this.gl.viewportHeight, 0.1, 100);
   this.uploadProjectionMatrixToShader();
 
   glMatrix.mat4.identity(this.viewMatrix);
