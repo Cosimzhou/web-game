@@ -1155,8 +1155,7 @@ RingShape.prototype.transform = function(circle, rubik, matrix) {
   var translate = [];
   glMatrix.vec3.scale(translate, rubik.xyzAxis[circle.axis + 1], rate);
   glMatrix.mat4.translate(matrix, matrix, translate);
-  glMatrix.mat4.rotate(matrix, matrix, ...rubik.ringRotate[circle
-    .axis]);
+  glMatrix.mat4.rotate(matrix, matrix, ...rubik.ringRotate[circle.axis]);
   glMatrix.mat4.rotateZ(matrix, matrix, (this.degree++) * A1);
 }
 
@@ -1535,6 +1534,8 @@ Game.prototype.modelToggle = function(s) {
 }
 
 Game.prototype.changeOrder = function(n) {
+  this.modeRotate = 0;
+  this.animate = null;
   this.rubik = new this.shape(n);
   this.rubik.game = this;
 
