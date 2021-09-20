@@ -131,7 +131,6 @@ function CubeShape() {
   this.angUnit = A90;
   this.surfaceNum = 6;
   this.modelSide = SQRT2;
-
 }
 
 CubeShape.prototype.xyzAxis = [
@@ -148,13 +147,26 @@ CubeShape.prototype.ringRotate = [
   [0, [0, 0, 0]],
 ];
 
-CubeShape.prototype.surfaceNormals = [
-  [0.0, 0.0, 1.0],
-  [1.0, 0.0, 0.0],
-  [0.0, 1.0, 0.0],
-  [0.0, 0.0, -1.0],
-  [-1.0, 0.0, 0.0],
-  [0.0, -1.0, 0.0],
+CubeShape.prototype.surfaceMatrix = [
+  // [x axis, y axis, z axis]
+  [[1.0, 0.0, 0.0],
+   [0.0, 1.0, 0.0],
+   [0.0, 0.0, 1.0, 0.0]],
+  [[0.0, 0.0, 1.0],
+   [0.0, 1.0, 0.0],
+   [1.0, 0.0, 0.0, 0.0]],
+  [[1.0, 0.0, 0.0],
+   [0.0, 0.0, -1.0],
+   [0.0, 1.0, 0.0, 0.0]],
+  [[-1.0, 0.0, 0.0],
+   [0.0, 1.0, 0.0],
+   [0.0, 0.0, -1.0, 0.0]],
+  [[0.0, 0.0, -1.0],
+   [0.0, 1.0, 0.0],
+   [-1.0, 0.0, 0.0, 0.0]],
+  [[-1.0, 0.0, 0.0],
+   [0.0, 0.0, 1.0],
+   [0.0, -1.0, 0.0, 0.0]],
 ];
 
 CubeShape.prototype.vertexIndices = [0, 1, 2, 0, 2, 3];
@@ -314,7 +326,6 @@ function TetrahedronShape() {
   this.angUnit = A120;
   this.surfaceNum = 4;
   this.modelSide = SQRT3_2;
-
 }
 
 TetrahedronShape.prototype.vertexVector = [
@@ -354,15 +365,6 @@ TetrahedronShape.prototype.ringRotate = [
   [T4CAngle, [-1.5, SQRT3_2, 0]],
   [T4CAngle, [1.5, SQRT3_2, 0]]
 ];
-
-// Normal vectors
-TetrahedronShape.prototype.surfaceNormals = [
-  [-SQRT2 * DN2_3, 0.0, DN1_3],
-  [0.0, 0.0, -1.0],
-  [SQRT2_3, SQRT6_3, DN1_3],
-  [SQRT2_3, -SQRT6_3, DN1_3]
-  ];
-
 
 TetrahedronShape.prototype.vertexIndices = [0, 1, 2];
 TetrahedronShape.prototype.surfacePositions = [
@@ -447,7 +449,6 @@ function DodecahedronShape() {
   this.angUnit = A72;
   this.surfaceNum = 12;
   this.modelSide = PHI;
-
 }
 
 //var p = [
@@ -608,7 +609,7 @@ Rubik.prototype.drawParticle3D = function(tfInfo) {
   var colors = tfInfo[3];
   for (var i = 0; i < this.surfaceNum; i++) {
     var color = i < colors.length ? colors[i] : 0;
-    gls.setUniversalNormal(this.surfaceNormals[i]);
+    gls.setUniversalNormal(this.surfaceMatrix[i][2]);
     gls.setUniversalColor(colorArray[color]);
     gls.drawObject(this.vertexPositionBuffers[i], this
       .vertexIndexBuffer);
@@ -623,6 +624,29 @@ Rubik.prototype.project2D = function(map2d) {
     // Abstract method
     this.projectParticle2D(map2d, this.transformInfos[tfi], matrix);
   }
+
+  var selectedCircle = this.game.getRing();
+  if (selectedCircle) {
+    glMatrix.mat4.identity(matrix);
+    this.game.ring.transform(selectedCircle, this, matrix);
+    var pos = glMatrix.vec3.create();
+    glMatrix.vec3.transformMat4(pos, pos, matrix);
+    var norAxis = glMatrix.vec3.create();
+    norAxis[2] = 1; // z axis positive unit vector
+    glMatrix.vec3.transformMat4(norAxis, norAxis, matrix);
+
+    for (var i = 0, smat; smat = this.surfaceMatrix[i]; i++) {
+      var xdot = glMatrix.vec3.dot(norAxis, smat[0]);
+      var ydot = glMatrix.vec3.dot(norAxis, smat[1]);
+
+      if (Math.abs(xdot) > 1e-6) {
+        console.log("Project axis:", i, "x:", xdot);
+      } else if (Math.abs(ydot) > 1e-6) {
+        console.log("Project axis:", i, "y:", ydot);
+      }
+    }
+  }
+
 }
 
 /////////////////////////////////////////////////////////////////
@@ -770,14 +794,7 @@ CubeRubik.prototype.draw2D = function(game) {
     }
   }
 
-  var ring;
-  if (game.animate && game.animate.currentRotate && game.animate
-    .currentRotate.meta) {
-    ring = game.animate.currentRotate.meta;
-  } else if (game.mayCircle) {
-    ring = game.mayCircle;
-  }
-
+  var ring = game.getRing();
   if (ring) {
     if (ring.axis == 0) {
       drawBoldCircle(ring, [0, 1, 4, 5]);
@@ -1553,14 +1570,7 @@ Game.prototype.changeOrder = function(n) {
 Game.prototype.render = function() {
   this.rubik.draw3D();
 
-  var selectedCircle = null;
-  if (this.animate != null && this.animate.currentRotate != null && this
-    .animate.currentRotate.meta) {
-    selectedCircle = this.animate.currentRotate.meta;
-  } else if (this.mayCircle) {
-    selectedCircle = this.mayCircle;
-  }
-
+  var selectedCircle = this.getRing();
   if (selectedCircle) {
     gls.pushModelMatrix();
     this.ring.transform(selectedCircle, this.rubik, gls.modelMatrix);
@@ -1667,6 +1677,19 @@ Game.prototype.shuffle = function() {
   }
 
   this.refresh2D();
+}
+
+Game.prototype.getRing = function() {
+  var ring = null;
+  if (this.animate && this.animate.currentRotate) {
+    ring = this.animate.currentRotate.meta;
+  }
+
+  if (!ring && this.mayCircle) {
+    ring = this.mayCircle;
+  }
+
+  return ring;
 }
 
 Game.prototype.drag = function(dragX, dragY) {
