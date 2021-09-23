@@ -7,6 +7,7 @@ var c2dMargin = (6 * 100 - 500) / 5,
 var c2dPixelLen;
 
 // Math Const
+var EPSILON = 1.0e-6;
 var SQRT2 = Math.sqrt(2.0);
 var SQRT3 = Math.sqrt(3.0);
 var SQRT6 = Math.sqrt(6.0);
@@ -631,22 +632,47 @@ Rubik.prototype.project2D = function(map2d) {
     this.game.ring.transform(selectedCircle, this, matrix);
     var pos = glMatrix.vec3.create();
     glMatrix.vec3.transformMat4(pos, pos, matrix);
-    var norAxis = glMatrix.vec3.create();
+    var norAxis = glMatrix.vec4.create();
     norAxis[2] = 1; // z axis positive unit vector
-    glMatrix.vec3.transformMat4(norAxis, norAxis, matrix);
+    glMatrix.vec4.transformMat4(norAxis, norAxis, matrix);
 
+    var obj = {};
     for (var i = 0, smat; smat = this.surfaceMatrix[i]; i++) {
-      var xdot = glMatrix.vec3.dot(norAxis, smat[0]);
-      var ydot = glMatrix.vec3.dot(norAxis, smat[1]);
+      var sina = glMatrix.vec3.dot(norAxis, smat[2]);
+      if (Math.abs(sina) < 0.9) {
+        var sesa = 1.0 / Math.sqrt(1 - sina * sina);
+        var xdot = glMatrix.vec3.dot(norAxis, smat[0]);
+        var ydot = glMatrix.vec3.dot(norAxis, smat[1]);
+        var xbool = Math.abs(xdot) > EPSILON;
+        var ybool = Math.abs(ydot) > EPSILON;
+        if (!(xbool || ybool)) console.error("sc:", sina, cosa, xdot, ydot);
 
-      if (Math.abs(xdot) > 1e-6) {
-        console.log("Project axis:", i, "x:", xdot);
-      } else if (Math.abs(ydot) > 1e-6) {
-        console.log("Project axis:", i, "y:", ydot);
+        var x = glMatrix.vec3.dot(pos, smat[0]) * sesa,
+          y = glMatrix.vec3.dot(pos, smat[1]) * sesa;
+        var pxy = this.projectXY(y, x);
+
+        obj[i] = { val: pxy, ydir: !xbool, angle: xdot };
       }
+    }
+    selectedCircle.r2dinfo = obj;
+    console.log("Project axis:", obj);
+  }
+
+}
+
+Rubik.prototype.findSide = function(axis, matrix) {
+  var mi, mv = 0;
+  var v = glMatrix.vec4.create();
+  var vaxis = this.surfaceMatrix[axis][2];
+  for (var i = 0, smat; smat = this.surfaceMatrix[i]; i++) {
+    glMatrix.vec4.transformMat4(v, smat[2], matrix);
+    var val = glMatrix.vec3.dot(v, vaxis);
+    if (val > mv) {
+      mv = val, mi = i;
     }
   }
 
+  return mi;
 }
 
 /////////////////////////////////////////////////////////////////
@@ -761,6 +787,10 @@ CubeRubik.prototype.initTransforms = function() {
   c2dPixelLen = c2dSide / n;
 }
 
+CubeRubik.prototype.projectXY = function(y, x) {
+  return [y, x];
+}
+
 CubeRubik.prototype.draw2D = function(game) {
   function transformSide(s) {
     ctx2d.translate(c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
@@ -859,6 +889,11 @@ CubeRubik.prototype.projectParticle2D = function(map2d, transInfo,
     return 0;
   }
 
+  //var mat = glMatrix.mat4.create();
+  //glMatrix.mat4.identity(mat);
+  //glMatrix.mat4.rotate(mat, mat, transInfo[1], this.xyzAxis[transInfo[0]]);
+  //glMatrix.mat4.multiply(mat, matrix, mat);
+
   for (var axis = 0, s, x, y, c; axis < 3; axis++) {
     var vaxis = pos[axis];
     if (Math.abs(vaxis) < this.surfaceV) continue;
@@ -873,6 +908,7 @@ CubeRubik.prototype.projectParticle2D = function(map2d, transInfo,
     }
 
     // Get color
+    //c = transInfo[3][this.findSide(axis, mat)];
     c = findSide(axis, vaxis);
 
     // Get x,y at certain side
@@ -912,6 +948,7 @@ function TetrahedronRubik(order) {
   incept(Rubik, this);
   incept(TetrahedronShape, this);
 
+  this.R = 1.05;
   this.layerIndices = null;
   this.setOrder(order);
 }
@@ -925,7 +962,6 @@ TetrahedronRubik.prototype._projectInLayer = function(project, layer,
 
 TetrahedronRubik.prototype.setOrder = function(n) {
   this.orderNum = n;
-  this.R = 1.05;
 
   // init layer indices
   this.layerIndices = [];
@@ -1054,60 +1090,77 @@ TetrahedronRubik.prototype.projectParticle2D = function(map2d, transInfo,
   var pos = matrix.slice(12, 15);
   var smat = this.surfaceMatrix;
 
-  function findSide(axis) {
-    var mi, mv = 0;
-    var v = glMatrix.vec4.create();
-    var vaxis = smat[axis][2];
-    for (var i = 0; i < 4; i++) {
-      glMatrix.vec4.transformMat4(v, smat[i][2], matrix);
-      var val = glMatrix.vec3.dot(v, vaxis);
-      if (val > mv) {
-        mv = val;
-        mi = i;
-      }
+  for (var axis = 0, x, y, pxy, c; axis < 4; axis++) {
+    if (glMatrix.vec3.dot(pos, smat[axis][2]) >= this.surfaceV) {
+      x = glMatrix.vec3.dot(pos, smat[axis][0]);
+      y = glMatrix.vec3.dot(pos, smat[axis][1]);
+      pxy = this.projectXY(y, x);
+      c = this.findSide(axis, matrix);
+
+      map2d[axis][pxy[0]][pxy[1]] = c + 1;
     }
-    return mi;
-  }
-
-  var R = this.R;
-  var xunit = 1.5 * R / SQRT3;
-
-  function findY(y, n) {
-    for (var i = 0; i < n; i++) {
-      //(1 + DN1_3) * i - n + 1
-      if (y + 0.1 > R * (n - 1 - 1.5 * i)) {
-        return i;
-      }
-    }
-    return i - 1;
-  }
-
-  function findX(x, y) {
-    return y + parseInt(Math.round(x / xunit));
-  }
-
-  for (var axis = 0, s = 0, x = 0, y = 0, c; axis < 4; axis++) {
-    if (glMatrix.vec3.dot(pos, smat[axis][2]) < this.surfaceV)
-      continue;
-
-    x = glMatrix.vec3.dot(pos, smat[axis][0]);
-    y = glMatrix.vec3.dot(pos, smat[axis][1]);
-
-    c = findSide(axis);
-    var iy = findY(y, this.orderNum);
-    var ix = findX(x, iy);
-
-    map2d[axis][iy][ix] = c + 1;
   }
 }
 
+TetrahedronRubik.prototype.projectXY = function(y, x) {
+  var iy = this.findY(y);
+  var ix = this.findX(x, iy);
+
+  return [iy, ix];
+}
+
+TetrahedronRubik.prototype.findY = function(y) {
+  for (var i = 0; i < this.orderNum; i++) {
+    //(1 + DN1_3) * i - n + 1
+    if (y + 0.1 > this.R * (this.orderNum - 1 - 1.5 * i)) {
+      return i;
+    }
+  }
+
+  return i - 1;
+}
+
+TetrahedronRubik.prototype.findX = function(x, y) {
+  var xunit = 1.5 * this.R / SQRT3;
+  return y + parseInt(Math.round(x / xunit));
+}
+
 TetrahedronRubik.prototype.draw2D = function(game) {
+  var selectedCircle = this.game.getRing();
+  var ring = selectedCircle && selectedCircle.r2dinfo;
+
   for (var s = 0; s < 4; s++) {
     ctx2d.save();
     //  Set pixel side
     ctx2d.translate(100 + c2dMargin + (c2dMargin + c2dSide) * s, c2dMargin);
     ctx2d.scale(c2dPixelLen, c2dPixelLen);
     ctx2d.translate(0.05, 0.05);
+
+    //
+    if (ring && ring[s]) {
+      var obj = ring[s];
+      var y = obj.val[0] + 0.5;
+      var horder = this.orderNum / 2;
+      ctx2d.beginPath();
+      if (obj.ydir) {
+        ctx2d.moveTo(-horder, y);
+        ctx2d.lineTo(horder, y);
+      } else if (obj.angle < 0) {
+        var half = obj.val[1] / 2;
+        ctx2d.moveTo(half, 0);
+        ctx2d.lineTo(half - horder, this.orderNum);
+      } else if (obj.angle > 0) {
+        var diff = obj.val[1] / 2 - obj.val[0];
+        var half = obj.val[1] / 2;
+        ctx2d.moveTo(diff, 0);
+        ctx2d.lineTo(diff + horder, this.orderNum);
+      }
+      ctx2d.closePath();
+      ctx2d.strokeStyle = colorArray2D[7];
+      ctx2d.lineWidth = 1.2;
+      ctx2d.stroke();
+    }
+
 
     for (var y = 0; y < this.orderNum; y++) {
       for (var xx = 0, xx; xx <= y * 2; xx++) {
