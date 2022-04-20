@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-cn">
+
+<head>
+  <meta charset="UTF-8">
+  <title>中国象棋</title>
+  <link href="../canvas-page.css" rel="stylesheet" type="text/css" />
+  <script type="text/javascript" src="2dgame.js"></script>
+  <script type="text/javascript" src="cchess.js"></script>
+  <script type="text/javascript">
+    function getParam(name, def = null) {
+      var paramVal = def;
+      if (location.search.length > 1) {
+        var params = location.search.substr(1).split("&");
+        for (var p of params) {
+          var pos = p.indexOf("=");
+          if (pos < 0) continue;
+
+          var pname = p.substr(0, pos),
+            value = p.substr(pos + 1);
+          if (pname == name) {
+            paramVal = value;
+          }
+        }
+      }
+      return paramVal;
+    }
+  </script>
+</head>
+
+<body height="100%" width="100%">
+  <center>
+    <h1 id="title"></h1><br><br>
+    <p id="level"></p>
+    <canvas id="canvas" width="500" height="600"></canvas><br>
+    <p id="step"></p><br><br>
+    <a href="#" onclick="prev()">Prev</a>
+    <a href="#" onclick="answer()">Answer</a>
+    <a href="#" onclick="next()">Next</a>
+  </center>
+  <script type="text/javascript">
+    var canvas = document.getElementById("canvas");
+    setUp(canvas);
+  </script>
+</body>
+
+</html>
