@@ -3,31 +3,20 @@
   var M2PI = Math.PI * 2;
   var CX = 9,
     CY = 10;
-  var UX = CX + 1,
-    UY = CY + 1;
-  var WX = CX + 2,
-    WY = CY + 2
-  var U2X = UX << 1,
-    U2Y = UY << 1;
-  var ALL_LEN = UX * WY + 1;
   var WALL = 0xff;
-  var BEGIN = WX,
-    END = UY * UX;
   var ChessMarkTexts = [[, "將", "士", "象", "馬", "車", "炮", "卒", ],
    [, "帥", "仕", "相", "馬", "車", "炮", "兵", ]];
 
-
   var GameUI = c2g.GameUI;
-  GameUI.prototype.gameClear = function() {}
-
-  GameUI.prototype.queryPossible = function(mid) {
-    return result;
+  GameUI.prototype.gameClear = function() {
+    alert("Game over");
   }
-
+  GameUI.prototype.finishAnimate = function() {
+    alert("Game over");
+  }
   GameUI.prototype.initImpl = function() {
     this._turn = true;
   }
-
   GameUI.prototype.putSpriteImpl = function(e) {
     if (!this.spotted) return;
     var pt = this.pointToPot(e);
@@ -48,11 +37,17 @@
     this.refresh();
 
     if (!this._turn) {
+      // Because of the capablity of the web browser, the search
+      // depth is limited not greater than 2.
       var mv = AISearch(this.base, false, 2);
-      var chm = this.base._mps[mv[0]];
-      console.log(mv, chm._pos);
-      this.base._map[chm._pos] = 0;
-      this.animate = new c2g.Animate(this, mv[0], chm._pos, mv[1], 0);
+      if (mv) {
+        var chm = this.base._mps[mv[0]];
+        console.log(mv, chm._pos);
+        this.base._map[chm._pos] = 0;
+        this.animate = new c2g.Animate(this, mv[0], chm._pos, mv[1], 0);
+      } else {
+        alert("困毙");
+      }
     }
   }
 
@@ -72,9 +67,7 @@
 
     console.log(Evaluate(this.base, this._turn));
   }
-  GameUI.prototype.dragSpriteImpl = function() {
-    //  console.log("implement dragSpriteImpl");
-  }
+  GameUI.prototype.dragSpriteImpl = function() {}
 
   GameUI.prototype.refreshImpl = function() {
     this.drawBoard();
@@ -90,32 +83,52 @@
     }
   }
   GameUI.prototype.drawHintRoot = function() {
+    if (this.noHint) return;
     var ctx = this.ctx;
     var lw = this.ctx.lineWidth;
     var ss = this.ctx.strokeStyle;
+    var base = this.base;
 
-    ctx.lineWidth = 0.015;
-    ctx.strokeStyle = "green";
-    ctx.beginPath();
-    this._coverage._rootedPots.forEach(function(p) {
+    ctx.lineWidth = 0.025;
+    for (var p = 11; p < 110; p++) {
+      if (base._map[p] == WALL) continue;
       var x = p % 10 - 1,
         y = parseInt(p / 10) - 1;
-      ctx.moveTo(x + 0.5, y);
-      ctx.ellipse(x, y, 0.5, 0.5, 0, 0, M2PI);
-    });
-    ctx.stroke();
-    ctx.closePath();
+      var chi = base._map[p];
+      if (chi == 0) {
 
-    ctx.strokeStyle = "red";
-    ctx.beginPath();
-    this._coverage._attackPots.forEach(function(p) {
-      var x = p % 10 - 1,
-        y = parseInt(p / 10) - 1;
-      ctx.moveTo(x + 0.5, y);
-      ctx.ellipse(x, y, 0.5, 0.5, 0, 0, M2PI);
-    });
-    ctx.stroke();
-    ctx.closePath();
+      } else {
+        var cover, threat;
+        if ((chi > 32) == this._turn) {
+          cover = this._coverage._rootedPots.has(p),
+            threat = this._rivalCoverage._attackPots.has(p);
+        } else {
+          cover = this._rivalCoverage._rootedPots.has(p),
+            threat = this._coverage._attackPots.has(p);
+        }
+        if (cover && threat) {
+          ctx.strokeStyle = "green";
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, y);
+          ctx.arc(x, y, 0.5, 0, Math.PI);
+          ctx.stroke();
+          ctx.closePath();
+
+          ctx.strokeStyle = "red";
+          ctx.beginPath();
+          ctx.arc(x, y, 0.5, Math.PI, M2PI);
+          ctx.stroke();
+          ctx.closePath();
+        } else if (cover || threat) {
+          ctx.strokeStyle = cover ? "green" : "red";
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, y);
+          ctx.ellipse(x, y, 0.5, 0.5, 0, 0, M2PI);
+          ctx.stroke();
+          ctx.closePath();
+        }
+      }
+    }
 
     ctx.strokeStyle = ss;
     ctx.lineWidth = lw;
@@ -248,20 +261,30 @@
   exports['setUp'] = setUp;
   exports['reload'] = function(st) {}
   exports['next'] = function() {}
-  exports['prev'] = function() {}
-  exports['answer'] = function() {
-    if (g_ui.base.isOver()) return;
-
-    if (g_ui.answer) {
-      g_ui.answer = null;
-      return;
+  exports['prev'] = function() {
+    var base = g_ui.base;
+    if (base._history.length > 0) {
+      base._unmove();
+      base._unmove();
+      g_ui.updateImpl();
+      g_ui.refresh();
+    } else {
+      alert("");
     }
+  }
+  exports['answer'] = function() {
+    //if (g_ui.base.isOver()) return;
 
-    var answer = Travel(g_ui.game);
-    var mv = answer[0];
+    //if (g_ui.answer) {
+    //  g_ui.answer = null;
+    //  return;
+    //}
 
-    g_ui.refresh();
-    g_ui.answer = answer;
+    //var answer = Travel(g_ui.game);
+    //var mv = answer[0];
+
+    //g_ui.refresh();
+    //g_ui.answer = answer;
   }
 
   function ChessMan(id, pos) {
@@ -372,6 +395,8 @@
     if (x > 4) res.add(this._pos - 1);
     if (this._pos > 20) res.add(this._pos - 10);
     if (this._pos < 30) res.add(this._pos + 10);
+    for (x = this._pos + 10; x < 110 && board[x] == 0; x += 10);
+    if (board[x] == 0x22) res.add(x);
   }
   ChessMan.prototype.__shuaimove = function(res, board) {
     var x = this._pos % 10;
@@ -379,6 +404,8 @@
     if (x > 4) res.add(this._pos - 1);
     if (this._pos > 90) res.add(this._pos - 10);
     if (this._pos < 99) res.add(this._pos + 10);
+    for (x = this._pos - 10; x > 10 && board[x] == 0; x -= 10);
+    if (board[x] == 0x02) res.add(x);
   }
   ChessMan.prototype.__paomove = function(res, board) {
     var i, cn;
@@ -390,11 +417,13 @@
       if (board[i]) cn++;
       if (!(cn & 1)) res.add(i);
     }
-    for (cn = 0, i = this._pos + 10; cn < 2 && board[i] != WALL; i += 10) {
+    for (cn = 0, i = this._pos + 10; cn < 2 && board[i] != WALL; i +=
+      10) {
       if (board[i]) cn++;
       if (!(cn & 1)) res.add(i);
     }
-    for (cn = 0, i = this._pos - 10; cn < 2 && board[i] != WALL; i -= 10) {
+    for (cn = 0, i = this._pos - 10; cn < 2 && board[i] != WALL; i -=
+      10) {
       if (board[i]) cn++;
       if (!(cn & 1)) res.add(i);
     }
@@ -409,11 +438,13 @@
       if (cn == 1) res.add(i);
       if (board[i]) cn++;
     }
-    for (cn = 0, i = this._pos + 10; cn < 2 && board[i] != WALL; i += 10) {
+    for (cn = 0, i = this._pos + 10; cn < 2 && board[i] != WALL; i +=
+      10) {
       if (cn == 1) res.add(i);
       if (board[i]) cn++;
     }
-    for (cn = 0, i = this._pos - 10; cn < 2 && board[i] != WALL; i -= 10) {
+    for (cn = 0, i = this._pos - 10; cn < 2 && board[i] != WALL; i -=
+      10) {
       if (cn == 1) res.add(i);
       if (board[i]) cn++;
     }
@@ -464,6 +495,9 @@
     var ch = this._mps[id] = new ChessMan(id, pos);
     (ch._isRed() ? this._redchm : this._blackchm).push(ch);
   }
+  Board.prototype._general = function(isred) {
+    return this._mps[isred ? 0x22 : 0x02];
+  }
 
   Board.prototype._queryAvailable = function(side) {
     var seq = side ? this._redchm : this._blackchm;
@@ -508,6 +542,7 @@
     if (dchm) {
       dchm.pick();
       this._captive.push(dchm);
+      dchm._pos = 0;
     }
     this._history.push(helem);
     this._map[chm._pos] = 0;
@@ -531,7 +566,8 @@
   }
 
   Board.prototype.isOver = function() {
-    return false;
+    return this._general(0x02)._pos == 0 || this._general(0x22)._pos ==
+      0;
   }
 
   Board.prototype._set_wall = function() {
@@ -552,15 +588,16 @@
   function Evaluate(base, current) {
     var cov1 = base._queryAvailable(current);
     var cov2 = base._queryAvailable(!current);
-    var rjs = base._mps[0x22],
-      bjs = base._mps[0x02];
+    var rivalEnemy = current ? 0x22 : 0x02;
+    var rjs = base._mps[rivalEnemy],
+      zjs = base._mps[rivalEnemy ^ 0x20];
     if (cov1._availCount == 0) return -Infinity;
-    if (cov1._attackPots.has(bjs._pos)) return Infinity;
-    if (cov2._attackPots.has(rjs._pos)) return -Infinity;
+    if (cov1._attackPots.has(rjs._pos)) return Infinity;
+    if (cov2._attackPots.has(zjs._pos)) return -Infinity;
 
     var score = 0;
     score += staticChm(base._redchm) - staticChm(base._blackchm);
-    score += (cov1._coverPots.size - cov2._coverPots.size) * 20;
+    score += (cov1._coverPots.size - cov2._coverPots.size) * 10;
     score += (cov1._rootedPots.size - cov2._rootedPots.size) * 5;
     score += (cov1._attackPots.size - cov2._attackPots.size) * 5;
     //score += (cov1._availCount - cov2._availCount) * 8;
@@ -569,7 +606,7 @@
   }
 
   function staticChm(arr) {
-    var staticScores = [0, 99999, 200, 200, 500, 1000, 550, 100];
+    var staticScores = [0, 19999, 200, 200, 500, 1000, 550, 100];
     var score = 0;
     var meta = [],
       x, y, k;
@@ -615,11 +652,11 @@
       var mvs = avaiables._allowMoves[ch];
       for (var pt of mvs) {
         base._move(chm, pt);
-        val = -AlphaBetaSearch(base, !turn, depth - 1, 100000, -100000);
+        val = -AlphaBetaSearch(base, !turn, depth, 1000000, -1000000);
         base._unmove();
         if (val > bestScore) {
           bestScore = val;
-          bestMove = [chm, pt]
+          bestMove = [chm, pt, val]
         }
       }
     }
@@ -628,6 +665,10 @@
   }
 
   function AlphaBetaSearch(base, turn, depth, mxv, mnv) {
+    if (!base._general(turn)._pos)
+      return -Infinity;
+    if (!base._general(!turn)._pos)
+      return Infinity;
     if (depth <= 0) {
       return Evaluate(base, turn);
     }
@@ -641,15 +682,16 @@
         base._move(chm, pt);
         var val = -AlphaBetaSearch(base, !turn, depth - 1, -mnv, -mxv);
         base._unmove();
-        if (val > mnv) {
-          mnv = val;
+        if (val >= mnv) {
+          if (val == mnv) {
+
+            mnv = val;
+          } else mnv = val;
         }
-        if (val < mxv) {
-          return mnv;
-        }
+
+        if (val >= mxv) return mnv;
       }
     }
     return mnv;
   }
-
 })();

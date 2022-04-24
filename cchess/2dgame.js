@@ -16,7 +16,6 @@
 
   function GameUI(canvas) {
     this.ctx = canvas.getContext('2d');
-    this.game = null;
     this.spotted = null;
     this.spottedPos = null;
     this.pressed = false;
@@ -29,6 +28,7 @@
     var ui = this;
     canvas.addEventListener("mousedown", function(e) {
       if (ui.animate) return;
+      if (ui.base.isOver()) return;
 
       var mid = ui.pointToManID(e);
       if (mid != ui.spotted) {
@@ -48,7 +48,6 @@
       ui.pressed = false;
       ui.putSpriteImpl(e);
     });
-
     canvas.addEventListener("mousemove", function(e) {
       if (ui.pressed && !ui.animate) {
         ui.spottedPos = ui.pointToFPos(e);
@@ -56,7 +55,6 @@
         ui.refresh();
       }
     });
-
     this.initImpl();
   }
   Kit['GameUI'] = GameUI;
@@ -161,6 +159,7 @@
     this.ui.base._move(this.mid, this.dst);
     this.ui._turn = !this._turn;
     this.ui.updateImpl();
+    this.ui.refresh();
 
     if (this.ui.base.isOver()) {
       if (typeof this.ui.finishAnimate === 'function') {
@@ -179,6 +178,7 @@
     this.ui.base._move(this.mid, this.dst);
     this.ui._turn = !this._turn;
     this.ui.updateImpl();
+    this.ui.refresh();
 
     if (this.ui.base.isOver()) {
       if (typeof this.ui.finishAnimate === 'function') {
