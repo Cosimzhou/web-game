@@ -5,26 +5,9 @@
   <meta charset="UTF-8">
   <title>Checker</title>
   <link href="../canvas-page.css" rel="stylesheet" type="text/css" />
+  <script type="text/javascript" src="../2dgame.js"></script>
   <script type="text/javascript" src="checker.js"></script>
   <script type="text/javascript">
-    function getParam(name, def = null) {
-      var paramVal = def;
-      if (location.search.length > 1) {
-        var params = location.search.substr(1).split("&");
-        for (var p of params) {
-          var pos = p.indexOf("=");
-          if (pos < 0) continue;
-
-          var pname = p.substr(0, pos),
-            value = p.substr(pos + 1);
-          if (pname == name) {
-            paramVal = value;
-          }
-        }
-      }
-      return paramVal;
-    }
-
     var wave = new Audio("./WAVE_SOUND.mp3");
 
     function sound() {
@@ -39,10 +22,10 @@
   <script type="text/javascript">
     var canvas = document.getElementById("canvas");
 
-    canvas.width = document.body.clientWidth * 3;
-    canvas.height = document.body.clientHeight * 3;
-    canvas.style.width = document.body.clientWidth;
-    canvas.style.height = document.body.clientHeight;
+    //canvas.width = document.body.clientWidth * 3;
+    //canvas.height = document.body.clientHeight * 3;
+    //canvas.style.width = document.body.clientWidth;
+    //canvas.style.height = document.body.clientHeight;
 
     setUp(canvas);
   </script>

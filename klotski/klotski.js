@@ -235,16 +235,20 @@
   }
 
 
+  //var GameUI = c2g.GameUI;
+
+  //GameUI.prototype.initImpl = function() {
   function GameUI(canvas) {
+    this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+
     this.game = null;
-    this.spotted = null;
     this.pressed = false;
     this.offset = [50, 50];
     this.answer = null;
 
     var ui = this;
-
+    var canvas = this.canvas;
     canvas.addEventListener("mousedown", function(e) {
       if (ui.animate) return;
 
@@ -266,7 +270,8 @@
     });
 
     canvas.addEventListener("mousemove", function(e) {
-      if (ui.pressed && !ui.animate && ui.possible && ui.possible.length >
+      if (ui.pressed && !ui.animate && ui.possible && ui.possible
+        .length >
         0) {
         var x = e.movementX,
           y = e.movementY;
@@ -338,10 +343,13 @@
 
     this.ctx.translate(...this.offset);
     this.ctx.scale(100, 100);
+    if (typeof this.refreshImpl === 'function') this.refreshImpl();
+  }
+
+  GameUI.prototype.refreshImpl = function() {
     this.drawBoard();
     this.drawBlocks();
   }
-
   GameUI.prototype.drawBoard = function() {
     var gap = 0.05;
     this.ctx.beginPath();
@@ -547,9 +555,10 @@
     g_ui = new GameUI(canvas);
     loadImage(g_ui);
 
-    st = parseInt(getParam("st") || 0);
+    st = parseInt(c2g.queryArgs.st || 0);
     var game = new Game(st);
     g_ui.game = game;
+    g_ui.base = game.base;
     g_ui.refresh();
 
   }

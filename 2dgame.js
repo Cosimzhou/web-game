@@ -15,6 +15,7 @@
     }
 
   function GameUI(canvas) {
+    this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.spotted = null;
     this.spottedPos = null;
@@ -43,6 +44,7 @@
     });
     canvas.addEventListener("mouseleave", function(e) {
       ui.pressed = false;
+      ui.putSpriteImpl(e);
     });
     canvas.addEventListener("mouseup", function(e) {
       ui.pressed = false;
@@ -133,7 +135,7 @@
         ui.spotted = null;
         ui.spottedPos = null;
 
-        anm.ui.updateImpl();
+        //anm.ui.updateImpl();
         anm.done();
         return;
       }
@@ -197,6 +199,11 @@
     this._next = this._prev = this;
   }
   Kit['LinkList'] = LinkList;
+  Kit['ApplyLinkList'] = function(cls) {
+    cls.prototype.push = LinkList.prototype.push;
+    cls.prototype.pick = LinkList.prototype.pick;
+    cls.prototype.recover = LinkList.prototype.recover;
+  }
   LinkList.prototype.push = function(node) {
     node._next = this;
     node._prev = this._prev;
@@ -207,5 +214,34 @@
     this._next._prev = this._prev;
     this._prev._next = this._next;
   }
+  LinkList.prototype.recover = function() {
+    if (this._next && this._prev) {
+      if (this._prev._next === this._next && this._next._prev === this
+        ._prev) {
+        this._prev._next = this;
+        this._next._prev = this;
+      }
+    }
+    //node._next = this;
+    //node._prev = this._prev;
+    //this._prev._next = node;
+    //this._prev = node;
+  }
 
+  function getParam() {
+    var paramObj = {};
+    if (location.search.length > 1) {
+      var params = location.search.substr(1).split("&");
+      for (var p of params) {
+        var pos = p.indexOf("=");
+        if (pos < 0) continue;
+
+        var pname = p.substr(0, pos),
+          value = p.substr(pos + 1);
+        paramObj[pname] = value;
+      }
+    }
+    return paramObj;
+  }
+  Kit['queryArgs'] = getParam();
 })();

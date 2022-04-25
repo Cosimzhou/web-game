@@ -520,92 +520,104 @@
   }
 
 
-
-  //
-  function GameUI(canvas) {
-    this.ctx = canvas.getContext('2d');
-
+  var GameUI = c2g.GameUI;
+  GameUI.prototype.initImpl = function() {
     this.game = new Game();
     this.current_possible = null;
     this.movingObject = null;
     this.animate = null;
 
     this.radius = 0.4;
-    this.scale = 60;
-    this.offsetX = 60;
-    this.offsetY = 60;
-    this.width = canvas.width;
-    this.height = canvas.height;
-
-    var ui = this;
-    canvas.addEventListener("mousedown", function(e) {
-      if (ui.animate) return;
-      var idx = ui.pointToIdx(e.offsetX, e.offsetY);
-      if (idx && ui.game.base.board[idx] == ui.game.side) {
-        ui.current_possible = ui.game.base.moveForPit(idx);
-
-        if (ui.current_possible.size) {
-          ui.movingObject = {
-            src: idx,
-            clr: ui.game.base.board[idx],
-            pt: [e.offsetX, e.offsetY]
-          };
-          ui.game.base.board[idx] = 0;
-        }
-        ui.refresh();
-      }
-    });
-    canvas.addEventListener("mouseleave", function(e) {
-      if (ui.movingObject) {
-        ui.game.base.board[ui.movingObject.src] = ui.movingObject.clr;
-        ui.movingObject = null;
-        ui.current_possible = null;
-        ui.refresh();
-      }
-    });
-    canvas.addEventListener("mouseup", function(e) {
-      if (ui.movingObject) {
-        var idx = ui.pointToIdx(e.offsetX, e.offsetY);
-
-        if (ui.current_possible.has(idx)) {
-          ui.game.base.board[idx] = ui.movingObject.clr;
-          ui.game.turnSide();
-
-          idx = "good";
-        } else {
-          ui.game.base.board[ui.movingObject.src] = ui.movingObject.clr;
-        }
-
-        ui.movingObject = null;
-        ui.current_possible = null;
-        ui.refresh();
-
-        if (idx == "good") {
-          var ai = new GameAI(ui.game, ui.game.side);
-          var move = ai.search(ui.game.turn);
-          ui.animate = new Animate(ui, move[0][0], move[1]);
-          //ui.refresh();
-
-        }
-      }
-    });
-    canvas.addEventListener("mousemove", function(e) {
-      if (ui.movingObject) {
-        ui.movingObject.pt[0] = e.offsetX;
-        ui.movingObject.pt[1] = e.offsetY;
-        ui.refresh();
-      }
-    });
+    this.offset = [60, 60];
   }
+
+  //
+  //function GameUI(canvas) {
+  //  this.ctx = canvas.getContext('2d');
+
+  //  this.game = new Game();
+  //  this.current_possible = null;
+  //  this.movingObject = null;
+  //  this.animate = null;
+
+  //  this.radius = 0.4;
+  //  this._screenScale = 50;
+  //  this.offsetX = 60;
+  //  this.offsetY = 60;
+  //  this.width = canvas.width;
+  //  this.height = canvas.height;
+
+  //  var ui = this;
+  //  canvas.addEventListener("mousedown", function(e) {
+  //    if (ui.animate) return;
+  //    var idx = ui.pointToIdx(e.offsetX, e.offsetY);
+  //    if (idx && ui.game.base.board[idx] == ui.game.side) {
+  //      ui.current_possible = ui.game.base.moveForPit(idx);
+
+  //      if (ui.current_possible.size) {
+  //        ui.movingObject = {
+  //          src: idx,
+  //          clr: ui.game.base.board[idx],
+  //          pt: [e.offsetX, e.offsetY]
+  //        };
+  //        ui.game.base.board[idx] = 0;
+  //      }
+  //      ui.refresh();
+  //    }
+  //  });
+  //  canvas.addEventListener("mouseleave", function(e) {
+  //    if (ui.movingObject) {
+  //      ui.game.base.board[ui.movingObject.src] = ui.movingObject.clr;
+  //      ui.movingObject = null;
+  //      ui.current_possible = null;
+  //      ui.refresh();
+  //    }
+  //  });
+  //  canvas.addEventListener("mouseup", function(e) {
+  //    if (ui.movingObject) {
+  //      var idx = ui.pointToIdx(e.offsetX, e.offsetY);
+
+  //      if (ui.current_possible.has(idx)) {
+  //        ui.game.base.board[idx] = ui.movingObject.clr;
+  //        ui.game.turnSide();
+
+  //        idx = "good";
+  //      } else {
+  //        ui.game.base.board[ui.movingObject.src] = ui.movingObject.clr;
+  //      }
+
+  //      ui.movingObject = null;
+  //      ui.current_possible = null;
+  //      ui.refresh();
+
+  //      if (idx == "good") {
+  //        var ai = new GameAI(ui.game, ui.game.side);
+  //        var move = ai.search(ui.game.turn);
+  //        ui.animate = new Animate(ui, move[0][0], move[1]);
+  //        //ui.refresh();
+
+  //      }
+  //    }
+  //  });
+  //  canvas.addEventListener("mousemove", function(e) {
+  //    if (ui.movingObject) {
+  //      ui.movingObject.pt[0] = e.offsetX;
+  //      ui.movingObject.pt[1] = e.offsetY;
+  //      ui.refresh();
+  //    }
+  //  });
+  //}
   GameUI.prototype.pointToIdx = function(px, py) {
-    var x = parseInt((px - this.offsetX) * 2 / this.scale + .5) / 2;
-    var y = parseInt((py - this.offsetY) / this.scale / SQRT3_2 + .5);
+    var x = parseInt((px - this.offset[0]) * 2 / this._screenScale + .5) /
+      2;
+    var y = parseInt((py - this.offset[1]) / this._screenScale / SQRT3_2 +
+      .5);
     x = parseInt(x + 5 - (y / 2));
 
     return (x < 0 || y < 0 || x > 16 || y > 16) ? 0 : xy2i(x, y);
   }
 
-  GameUI.prototype.refresh = function() {
+  GameUI.prototype.refreshImpl = function() {
     this.drawBoard();
 
     this._drawCheckermen();
@@ -727,7 +739,7 @@
     if (this.movingObject == null) return;
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    var R = this.scale * this.radius * 1.25;
+    var R = this._screenScale * this.radius * 1.25;
     var gr = R / 2;
     var x = this.movingObject.pt[0],
       y = this.movingObject.pt[1];
@@ -781,8 +793,10 @@
       var meta = this.ctx.measureText(txt);
       var px = in2x(i),
         py = in2y(i);
-      px = norm2x(px, py) * this.scale + this.offsetX - meta.width / 2;
-      py = norm2y(py) * this.scale + this.offsetY + 5;
+      px = norm2x(px, py) * this._screenScale + this.offset[0] - meta
+        .width /
+        2;
+      py = norm2y(py) * this._screenScale + this.offset[1] + 5;
       this.ctx.beginPath();
       this.ctx.fillText(txt, px, py);
       this.ctx.closePath();
@@ -791,21 +805,21 @@
 
   GameUI.prototype.drawBoard = function() {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.clearRect(0, 0, this.width, this.height);
-    this.ctx.translate(this.offsetX, this.offsetY);
-    this.ctx.scale(this.scale, this.scale);
-    this.ctx.lineWidth = 1 / this.scale;
+    this.ctx.clearRect(0, 0, this._screenWidth, this._screenHeight);
+    this.ctx.translate(...this.offset);
+    this.ctx.scale(this._screenScale, this._screenScale);
+    this.ctx.lineWidth = 1 / this._screenScale;
 
     this._drawNestTriangles();
     this._drawLinks();
     this._drawPits();
   }
 
-  GameUI.prototype.transform = function() {
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.translate(this.offsetX, this.offsetY);
-    this.ctx.scale(this.scale, this.scale);
-  }
+  //GameUI.prototype.transform = function() {
+  //  this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  //  this.ctx.translate(...this.offset);
+  //  this.ctx.scale(this._screenScale, this._screenScale);
+  //}
 
   var g_ui;
 

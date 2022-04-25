@@ -174,7 +174,7 @@
 
   function setUp(canvas) {
     game = new GoGame();
-    var layout = getParam("layout")
+    var layout = c2g.queryArgs.layout;
     if (layout) {
       fill(game, parse(layout));
     }
