@@ -26,18 +26,57 @@
       return paramVal;
     }
   </script>
+  <style>
+    .vertical-center {
+      margin: 0;
+      position: absolute;
+      top: 50%;
+      right: 0;
+      left: 0;
+      -ms-transform: translateY(-50%);
+      transform: translateY(-50%);
+    }
+
+    .container {
+      position: relative;
+      width: 90vw;
+      height: 90vh;
+      margin: auto;
+    }
+
+    .element {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      margin: auto;
+      //width: 50vw;
+      height: 50vh;
+    }
+
+    /* just aesthetics */
+    body {
+      height: 100vh;
+      display: flex;
+      background: azure;
+    }
+  </style>
 </head>
 
 <body height="100%" width="100%">
-  <center>
-    <h1 id="title"></h1><br><br>
-    <p id="level"></p>
-    <canvas id="canvas" width="500" height="600"></canvas><br>
-    <p id="step"></p><br><br>
-    <a href="#" onclick="prev()">悔棋</a>
-    <a href="#" onclick="answer()">Answer</a>
-    <a href="#" onclick="next()">Next</a>
-  </center>
+  <div class="container">
+    <div class="element">
+      <center>
+        <div class="vertical-center">
+          <canvas id="canvas" width="500" height="550"></canvas><br>
+          <a href="#" onclick="prev()">悔棋</a>
+          <a href="#" onclick="answer()">Answer</a>
+          <a href="#" onclick="next()">Next</a>
+        </div>
+      </center>
+    </div>
+  </div>
   <script type="text/javascript">
     var canvas = document.getElementById("canvas");
     setUp(canvas);

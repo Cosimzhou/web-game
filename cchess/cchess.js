@@ -56,6 +56,7 @@
     var chm = brd._mps[mid];
     if (chm != null && (this._turn == chm._isRed())) {
       brd._map[chm._pos] = 0;
+
     } else {
       this.spotted = null;
     }
@@ -80,6 +81,18 @@
       var chm = this.base._mps[this.spotted];
       var pt = this.spottedPos;
       this.drawChessman(pt[0], pt[1], chm);
+
+      var mvs = this._coverage._allowMoves[chm._pos];
+      for (var p of mvs) {
+        var x = p % 10 - 1,
+          y = parseInt(p / 10) - 1;
+        this.ctx.strokeStyle = "#0f0";
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.ellipse(x, y, 0.3, 0.3, 0, 0, M2PI);
+        this.ctx.stroke();
+        this.ctx.closePath();
+      }
     }
   }
   GameUI.prototype.drawHintRoot = function() {
@@ -160,6 +173,7 @@
   }
   GameUI.prototype.drawBoard = function() {
     this.ctx.beginPath();
+    this.ctx.strokeStyle = "black";
     this.ctx.lineWidth = 0.04;
     // Horizontal lines
     for (var i = 0; i < 10; i++) {
@@ -635,6 +649,9 @@
             y = 17 - y * y
             score += y * 2;
           }
+          break;
+        default:
+          meta[k] = meta[k] ? 1 : 2;
           break;
       }
     }
