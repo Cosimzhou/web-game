@@ -4,8 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <title>中国象棋</title>
-  <link href="../canvas-page.css" rel="stylesheet" type="text/css" />
+  <link rel="stylesheet" href="../canvas-page.css" type="text/css" />
   <script type="text/javascript" src="../2dgame.js"></script>
+  <script type="text/javascript" src="qipu.js"></script>
+  <script type="text/javascript" src="opening.js"></script>
   <script type="text/javascript" src="cchess.js"></script>
 </head>
 
@@ -14,11 +16,14 @@
     <div class="element">
       <center>
         <div class="vertical-center">
+          <h1 id="title"></h1><br><br>
           <canvas id="canvas" width="500" height="550"></canvas><br>
           <p id="step"></p><br><br>
           <a href="#" onclick="prev()">悔棋</a>
+          <a href="#" onclick="autoAct()">电脑行棋</a>
           <a href="#" onclick="restart()">重新开始</a>
-          <input type="checkbox" checked onchange="onCheck(this)">提示</input>
+          <input type="checkbox" onchange="onCheck(this)">提示</input>
+          <input type="checkbox" checked onchange="onBlack(this)">执红</input>
         </div>
       </center>
     </div>

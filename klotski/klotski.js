@@ -227,7 +227,7 @@
         Data[opening][1]];
     }
 
-    console.log(this.base.listPossible(), this.base._board);
+    console.log(this.base.listPossible(), this.base._map);
     this.update();
   }
   Game.prototype.update = function() {
@@ -235,68 +235,55 @@
   }
 
 
-  //var GameUI = c2g.GameUI;
+  var GameUI = c2g.GameUI;
+  c2g.setSize(CX, CY);
 
-  //GameUI.prototype.initImpl = function() {
-  function GameUI(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-
+  GameUI.prototype.initImpl = function() {
     this.game = null;
-    this.pressed = false;
-    this.offset = [50, 50];
     this.answer = null;
-
-    var ui = this;
-    var canvas = this.canvas;
-    canvas.addEventListener("mousedown", function(e) {
-      if (ui.animate) return;
-
-      var mid = ui.pointToManID(e);
-      if (mid != ui.spotted) {
-        ui.spotted = mid;
-        ui.refresh();
-        if (mid != null) {
-          ui.possible = ui.queryPossible(mid);
-        }
-      }
-      ui.pressed = true;
-    });
-    canvas.addEventListener("mouseleave", function(e) {
-      ui.pressed = false;
-    });
-    canvas.addEventListener("mouseup", function(e) {
-      ui.pressed = false;
-    });
-
-    canvas.addEventListener("mousemove", function(e) {
-      if (ui.pressed && !ui.animate && ui.possible && ui.possible
-        .length >
-        0) {
-        var x = e.movementX,
-          y = e.movementY;
-        var len = Math.hypot(x, y);
-        if (len > 3) {
-          if (y == 0 || Math.abs(x) / Math.abs(y) > 3) {
-            x = Math.sign(x), y = 0;
-          } else if (x == 0 || Math.abs(y) / Math.abs(x) > 3) {
-            x = 0, y = Math.sign(y);
-          }
-
-          for (var p of ui.possible) {
-            if (p[1][0] == x && p[1][1] == y) {
-              ui.animate = new Animate(ui, ui.spotted, p[0]);
-              break;
-            }
-          }
-        }
-      }
-    });
   }
 
+  GameUI.prototype.finishAnimate = function(mid) {
+    this.spotted = 1;
+    this.animate = new c2g.Animate(this, 1, { dst: 32 });
+  }
+  GameUI.prototype.pickSpriteImpl = function(mid) {
+    var pos = this.base._mps[mid];
+    this.spottedPos = decode_pos(pos);
+    this.possible = this.queryPossible(mid);
+  }
+  GameUI.prototype.putSpriteImpl = function(mid) {}
+  GameUI.prototype.updateImpl = function(mid) {}
+  GameUI.prototype.dragSpriteImpl = function(e) {
+    var pos = this.base._mps[this.spotted];
+    this.spottedPos = decode_pos(pos);
+
+    if (this.pressed && this.spotted && !this.animate && this.possible &&
+      this.possible.length > 0) {
+      var x = e.movementX,
+        y = e.movementY;
+      var len = Math.hypot(x, y);
+      if (len > 3) {
+        if (y == 0 || Math.abs(x) / Math.abs(y) > 3) {
+          x = Math.sign(x), y = 0;
+        } else if (x == 0 || Math.abs(y) / Math.abs(x) > 3) {
+          x = 0, y = Math.sign(y);
+        }
+
+        for (var p of this.possible) {
+          if (p[1][0] == x && p[1][1] == y) {
+            this.animate = new c2g.Animate(this, this.spotted, {
+              dst: p[0]
+            });
+            break;
+          }
+        }
+      }
+    }
+  }
   GameUI.prototype.queryPossible = function(mid) {
-    var pos = this.game.base._pieces[mid];
-    var board = this.game.base._board;
+    var pos = this.game.base._mps[mid];
+    var board = this.game.base._map;
     var xy = decode_pos(pos);
     var x = xy[0],
       y = xy[1];
@@ -316,34 +303,12 @@
       result.push([pos + 1, [1, 0]]);
     }
 
-
     if (!board[pos + UX * h] && (w == 1 || (w == 2 && !board[pos + 1 + h *
         UX]))) {
       result.push([pos + UX, [0, 1]]);
     }
 
     return result;
-  }
-
-  GameUI.prototype.pointToManID = function(e) {
-    var p = this.pointToPos(e);
-    var pos = encode_pos(...p);
-    return this.game.base._board[pos];
-  }
-
-  GameUI.prototype.pointToPos = function(e) {
-    var x = parseInt((e.offsetX - this.offset[0]) / 100);
-    var y = parseInt((e.offsetY - this.offset[1]) / 100);
-    return [x, y];
-  }
-
-  GameUI.prototype.refresh = function() {
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.clearRect(0, 0, 800, 800);
-
-    this.ctx.translate(...this.offset);
-    this.ctx.scale(100, 100);
-    if (typeof this.refreshImpl === 'function') this.refreshImpl();
   }
 
   GameUI.prototype.refreshImpl = function() {
@@ -366,7 +331,7 @@
 
   GameUI.prototype.drawBlocks = function() {
     var gap = 0.05;
-    var pcs = this.game.base._pieces;
+    var pcs = this.game.base._mps;
     for (var mid in pcs) {
       var pos = decode_pos(pcs[mid]);
       var x = pos[0],
@@ -377,9 +342,10 @@
       var img = Images[mid];
 
       if (this.spotted == mid) {
-        if (this.animate) {
-          x = this.animate.cx;
-          y = this.animate.cy;
+        if (this.animate && this.spottedPos) {
+          console.log(this.spottedPos);
+          x = this.spottedPos[0];
+          y = this.spottedPos[1];
         }
 
         this.ctx.fillStyle = "rgba(25,255,0,0.3)";
@@ -429,86 +395,6 @@
     }
   }
 
-  function Animate(ui, mid, dst, idx = null) {
-    var pos = ui.game.base._pieces[mid];
-    var xy = decode_pos(pos);
-    var dxy = decode_pos(dst);
-
-
-    this.ui = ui;
-    this.mid = ui.spotted = mid;
-    this.dst = dst;
-    this.idx = 0;
-    this.num = 5;
-    this.sx = xy[0];
-    this.sy = xy[1];
-    this.dx = dxy[0] - xy[0];
-    this.dy = dxy[1] - xy[1];
-    this.done = idx == null ? this.manualDone : this.answerDone;
-    this.ansIdx = idx;
-
-    var anm = this;
-    this.interval = setInterval(function() {
-      if (++anm.idx > anm.num) {
-        clearInterval(anm.interval);
-        ui.animate = null;
-        ui.spotted = null;
-
-        anm.ui.game.stepnum++;
-        anm.ui.game.update();
-
-        anm.done();
-        return;
-      }
-
-      anm.cx = anm.sx + anm.dx * (anm.idx / anm.num);
-      anm.cy = anm.sy + anm.dy * (anm.idx / anm.num);
-      anm.ui.refresh();
-
-    }, 100);
-  }
-
-  Animate.prototype.manualDone = function() {
-    if (this.ui.game.base.isOver()) {
-      alert("棒棒哒");
-      return;
-    }
-
-    this.ui.game.base._move(this.mid, this.dst);
-
-    console.log(this.ui.game.base.getFingerPrint(), this.ui.game.base
-      .listPossible());
-
-    if (this.ui.game.base.isOver()) {
-      this.ui.spotted = 1;
-      this.ui.animate = new Animate(this.ui, 1, 32);
-    }
-  }
-  Animate.prototype.answerDone = function() {
-    if (this.ui.game.base.isOver()) {
-      alert("棒棒哒");
-      this.ui.answer = null;
-      return;
-    }
-
-    this.ui.game.base._move(this.mid, this.dst);
-
-    console.log(this.ui.game.base.getFingerPrint(), this.ui.game.base
-      .listPossible());
-
-    if (this.ui.game.base.isOver()) {
-      this.ui.spotted = 1;
-      this.ui.animate = new Animate(this.ui, 1, 32);
-    } else if (this.ui.answer && this.ansIdx + 1 < this.ui.answer.length) {
-      var next_idx = this.ansIdx + 1;
-      var mv = this.ui.answer[next_idx];
-
-      this.ui.spotted = mv[0];
-      this.ui.animate = new Animate(this.ui, mv[0], mv[1], next_idx);
-    }
-  }
-
-
   function loadImage(ui) {
     var image_data = {
       // Square block
@@ -552,7 +438,7 @@
   var st = 0;
 
   function setUp(canvas) {
-    g_ui = new GameUI(canvas);
+    g_ui = new GameUI(canvas, { gridInner: true, scale: 100 });
     loadImage(g_ui);
 
     st = parseInt(c2g.queryArgs.st || 0);
@@ -566,18 +452,21 @@
   exports['reload'] = function(st) {
     var game = new Game(st);
     g_ui.game = game;
+    g_ui.base = game.base;
     g_ui.answer = null;
     g_ui.refresh();
   }
   exports['next'] = function() {
     var game = new Game(++st);
     g_ui.game = game;
+    g_ui.base = game.base;
     g_ui.answer = null;
     g_ui.refresh();
   }
   exports['prev'] = function() {
     var game = new Game(--st);
     g_ui.game = game;
+    g_ui.base = game.base;
     g_ui.answer = null;
     g_ui.refresh();
   }
@@ -594,7 +483,7 @@
 
     g_ui.refresh();
     g_ui.answer = answer;
-    g_ui.animate = new Animate(g_ui, mv[0], mv[1], 0);
+    g_ui.animate = new c2g.Animate(g_ui, mv[0], { dst: mv[1], idx: 0 });
   }
 
 
@@ -626,10 +515,10 @@
 
   Board.prototype._move = function(mid, dst) {
     // assert move is legal, no judge here
-    var pos = this._pieces[mid];
+    var pos = this._mps[mid];
     var w = wfromid(mid),
       h = hfromid(mid);
-    var board = this._board;
+    var board = this._map;
     var pits = this._pits;
 
     function addPit(p) { pits.add(p); }
@@ -657,18 +546,18 @@
     // Take
     set(pos, NIL, addPit);
     set(dst, mid, delPit);
-    this._pieces[mid] = dst;
+    this._mps[mid] = dst;
 
     return [mid, pos];
   }
 
   Board.prototype.isOver = function() {
-    return this._pieces[CAO] == 22;
+    return this._mps[CAO] == 22;
   }
 
   Board.prototype.clear = function() {
-    this._board = new Uint8Array(ALL_LEN);
-    this._pieces = {};
+    this._map = new Uint8Array(ALL_LEN);
+    this._mps = {};
     this._pits = new Set();
     for (var i = 0; i < ALL_LEN; ++i)
       this._pits.add(i);
@@ -677,25 +566,25 @@
 
   Board.prototype.isChm = function(x, y) {
     var pos = encode_pos(x, y);
-    return CAO <= this._board[pos] && this._board[pos] < WALL;
+    return CAO <= this._map[pos] && this._map[pos] < WALL;
   }
 
   Board.prototype.set_wall = function() {
     var top = UX * UY;
     for (var i = 0; i < UX; ++i) {
-      this._board[i] = WALL;
-      this._board[i + top] = WALL;
+      this._map[i] = WALL;
+      this._map[i + top] = WALL;
       this._pits.delete(i);
       this._pits.delete(i + top);
     }
 
     for (var i = 1; i < UY; ++i) {
-      this._board[i * UX] = WALL;
+      this._map[i * UX] = WALL;
       this._pits.delete(i * UX);
     }
 
-    this._board[ALL_LEN - 1] = WALL;
-    this._pits.delete(this._board.length - 1);
+    this._map[ALL_LEN - 1] = WALL;
+    this._pits.delete(this._map.length - 1);
   }
 
   Board.prototype.getStringFromBoard = function() {
@@ -705,8 +594,8 @@
     dic[PAWN] = [];
     dic[CAO] = [];
 
-    for (var mid in this._pieces) {
-      var xy = Board.decode_pos(this._pieces[mid]);
+    for (var mid in this._mps) {
+      var xy = Board.decode_pos(this._mps[mid]);
       dic[type(mid)].push(xy[0].toString() + xy[1].toString());
     }
 
@@ -729,8 +618,8 @@
     dic[PAWN] = [];
     dic[CAO] = [];
 
-    for (var mid in this._pieces) {
-      dic[type(mid)].push(this._pieces[mid].toString(36));
+    for (var mid in this._mps) {
+      dic[type(mid)].push(this._mps[mid].toString(36));
     }
 
     dic[VERT_SAT].sort();
@@ -760,9 +649,9 @@
 
       var pos = encode_pos(parseInt(string[i]), parseInt(string[i + 1]));
       if (man == 3) {
-        this._board[pos] = this._board[pos + 1] = this._board[pos +
-          UX] = this._board[pos + WX] = CAO;
-        this._pieces[CAO] = pos
+        this._map[pos] = this._map[pos + 1] = this._map[pos +
+          UX] = this._map[pos + WX] = CAO;
+        this._mps[CAO] = pos
         this._pits.delete(pos);
         this._pits.delete(pos + 1);
         this._pits.delete(pos + UX);
@@ -771,14 +660,14 @@
       }
 
       plrs[man] -= 1;
-      this._pieces[man_id] = pos;
-      this._board[pos] = man_id;
+      this._mps[man_id] = pos;
+      this._map[pos] = man_id;
       this._pits.delete(pos);
       if (man == 0) {
-        this._board[pos + UX] = man_id;
+        this._map[pos + UX] = man_id;
         this._pits.delete(pos + UX);
       } else if (man == 2) {
-        this._board[pos + 1] = man_id;
+        this._map[pos + 1] = man_id;
         this._pits.delete(pos + 1);
       }
     }
@@ -798,9 +687,9 @@
 
       var pos = parseInt(string[i], 36);
       if (man == 3) {
-        this._board[pos] = this._board[pos + 1] = this._board[pos +
-          UX] = this._board[pos + WX] = CAO;
-        this._pieces[CAO] = pos
+        this._map[pos] = this._map[pos + 1] = this._map[pos +
+          UX] = this._map[pos + WX] = CAO;
+        this._mps[CAO] = pos
         this._pits.delete(pos);
         this._pits.delete(pos + 1);
         this._pits.delete(pos + UX);
@@ -809,14 +698,14 @@
       }
 
       plrs[man] -= 1;
-      this._pieces[man_id] = pos;
-      this._board[pos] = man_id;
+      this._mps[man_id] = pos;
+      this._map[pos] = man_id;
       this._pits.delete(pos);
       if (idxs[man] == VERT_SAT) {
-        this._board[pos + UX] = man_id;
+        this._map[pos + UX] = man_id;
         this._pits.delete(pos + UX);
       } else if (idxs[man] == HORI_SAT) {
-        this._board[pos + 1] = man_id;
+        this._map[pos + 1] = man_id;
         this._pits.delete(pos + 1);
       }
     }
@@ -826,49 +715,49 @@
     var result = [];
     var me = this;
     this._pits.forEach(function(pos) {
-      var mid = me._board[pos - 1];
+      var mid = me._map[pos - 1];
       if (NIL < mid && mid < WALL) {
         var w = wfromid(mid),
           h = hfromid(mid);
-        var mp = me._pieces[mid];
+        var mp = me._mps[mid];
 
-        if ((h == 1) || (h == 2 && mp == pos - w && me._board[pos +
+        if ((h == 1) || (h == 2 && mp == pos - w && me._map[pos +
             UX] == NIL)) {
           result.push([mid, pos - w + 1, mp]);
         }
       }
 
-      mid = me._board[pos + 1];
+      mid = me._map[pos + 1];
       if (NIL < mid && mid < WALL) {
         var w = wfromid(mid),
           h = hfromid(mid);
-        var mp = me._pieces[mid];
+        var mp = me._mps[mid];
 
-        if ((h == 1) || (h == 2 && mp == pos + 1 && me._board[pos +
+        if ((h == 1) || (h == 2 && mp == pos + 1 && me._map[pos +
             UX] == NIL)) {
           result.push([mid, pos, mp]);
         }
       }
 
-      mid = me._board[pos + UX];
+      mid = me._map[pos + UX];
       if (NIL < mid && mid < WALL) {
         var w = wfromid(mid),
           h = hfromid(mid);
-        var mp = me._pieces[mid];
+        var mp = me._mps[mid];
 
-        if ((w == 1) || (w == 2 && mp == pos + UX && me._board[pos +
+        if ((w == 1) || (w == 2 && mp == pos + UX && me._map[pos +
             1] == NIL)) {
           result.push([mid, pos, mp]);
         }
       }
 
-      mid = me._board[pos - UX];
+      mid = me._map[pos - UX];
       if (NIL < mid && mid < WALL) {
         var w = wfromid(mid),
           h = hfromid(mid);
-        var mp = me._pieces[mid];
+        var mp = me._mps[mid];
 
-        if ((w == 1) || (w == 2 && mp == pos - h * UX && me._board[pos +
+        if ((w == 1) || (w == 2 && mp == pos - h * UX && me._map[pos +
             1] == NIL)) {
           result.push([mid, pos - (h - 1) * UX, mp]);
         }

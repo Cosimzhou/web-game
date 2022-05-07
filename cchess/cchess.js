@@ -6,15 +6,27 @@
   var WALL = 0xff;
   var ChessMarkTexts = [[, "將", "士", "象", "馬", "車", "炮", "卒", ],
    [, "帥", "仕", "相", "馬", "車", "炮", "兵", ]];
+  var ChineseNumber = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
 
   var GameUI = c2g.GameUI;
+  var WINSCORE = 3e+12;
+  var audio = new Audio("../WAVE_SOUND.mp3");
 
   GameUI.prototype.gameStart = function() {
-    this.base = new Board();
+    var bcode, st = c2g.queryArgs.st;
+    if (st && qipu) {
+      this.qipu = qipu[st - 1];
+      this.qipuIdx = 0;
+      bcode = this.qipu[1];
+      var title = document.getElementById("title");
+      if (title) title.innerHTML = this.qipu[0];
+      console.log(this.qipu);
+    }
+    this.openingWalker = new OpeningWalker();
+    this.base = new Board(bcode);
     this.stepnum = -1;
-    this._turn = true;
-    this.updateImpl();
-    this.refresh();
+    this._upperTurn = this._onBlack;
+    this.update();
   }
   GameUI.prototype.gameClear = function() {
     alert("Game over");
@@ -22,11 +34,20 @@
   GameUI.prototype.finishAnimate = function() {
     alert("Game over");
   }
+  GameUI.prototype.flip = function() {
+    this.stepnum--;
+    this.base._flip();
+    if (this.qipu) {
+      this.qipu[2] = this.qipu[2].map(function(a) { return a.map(flip); });
+    }
+    this.update();
+  }
   GameUI.prototype.initImpl = function() {
     this.stepbar = document.getElementById("step");
-    this._turn = true;
+    this._upperTurn = true;
     this.stepnum = 0;
-    this._noHint = false;
+    this._noHint = true;
+    this._onBlack = false;
   }
   GameUI.prototype.putSpriteImpl = function(e) {
     if (!this.spotted) return;
@@ -36,28 +57,16 @@
     if (chm != null) {
       var allows = this._coverage._allowMoves[chm._pos];
       if (allows && allows.has(pt)) {
-        this.base._move(this.spotted, pt);
-        this._turn = !this._turn;
-        this.updateImpl();
+        this.base._move(this.spotted, pt); // Add pu
+        this.openingWalker.focus(this.base.currentMove());
+        this.spotted = null;
+        this.update();
+        console.log(this.base._history[this.base._history.length - 1]
+          .explain(this.base));
       } else {
         this.base._map[chm._pos] = chm._id;
-      }
-    }
-
-    this.spotted = null;
-    this.refresh();
-
-    if (!this._turn) {
-      // Because of the capablity of the web browser, the search
-      // depth is limited not greater than 2.
-      var mv = AISearch(this.base, false, 2);
-      if (mv) {
-        var chm = this.base._mps[mv[0]];
-        console.log(mv, chm._pos);
-        this.base._map[chm._pos] = 0;
-        this.animate = new c2g.Animate(this, mv[0], chm._pos, mv[1], 0);
-      } else {
-        alert("困毙");
+        this.spotted = null;
+        this.refresh();
       }
     }
   }
@@ -65,7 +74,7 @@
   GameUI.prototype.pickSpriteImpl = function(mid) {
     var brd = this.base;
     var chm = brd._mps[mid];
-    if (chm != null && (this._turn == chm._isRed())) {
+    if (chm != null && (this._upperTurn == chm._isUpper())) {
       brd._map[chm._pos] = 0;
 
     } else {
@@ -76,12 +85,96 @@
   GameUI.prototype.updateImpl = function() {
     this.stepnum++;
     this.stepbar.innerHTML = "已行动:" + this.stepnum + "步";
-    this._coverage = this.base._queryAvailable(this._turn);
-    this._rivalCoverage = this.base._queryAvailable(!this._turn);
+    this._upperTurn = !this._upperTurn;
+    this._coverage = this.base._queryAvailable(this._upperTurn);
+    this._rivalCoverage = this.base._queryAvailable(!this._upperTurn);
+    if (this.stepnum) audio.play();
 
-    console.log(Evaluate(this.base, this._turn));
+    console.log(Evaluate(this.base, this._upperTurn));
     if (!this._coverage._availCount) {
+      this.refresh();
       alert("Game Over");
+      return;
+    }
+
+    if (!this._upperTurn) { // AI move
+      c2g.DoEventsRun(this, this.autoAct);
+    }
+  }
+
+  GameUI.prototype.autoAct = function() {
+    if (this.actAsPu()) {
+      return;
+    }
+
+    var mov = this.openingWalker.get(this.base);
+    if (mov) {
+      console.log(mov);
+      this.base._map[mov._src] = 0;
+      this.animate = new c2g.Animate(this, mov._id, {
+        pos: mov._src,
+        dst: mov._dst
+      });
+      this.openingWalker.focus(mov);
+      return;
+    }
+
+    // Because of the capablity of the web browser, the search
+    // depth is limited not greater than 2.
+    var move = AISearch(this.base, this._upperTurn, 2);
+    if (move) {
+      var chm = this.base._mps[move[0]];
+      console.log(move, chm._pos);
+      this.base._map[chm._pos] = 0;
+      this.animate = new c2g.Animate(this, move[0], {
+        pos: chm._pos,
+        dst: move[1]
+      });
+    } else {
+      alert("困毙");
+    }
+  }
+  GameUI.prototype.actAsPu = function() {
+    if (this.qipu && this.qipuIdx < this.qipu[2].length) {
+      if (this.stepnum == this.qipuIdx + 1 && this.base.currentMove()
+        .match(this.qipu[2][this.qipuIdx])) {
+        if (++this.qipuIdx == this.qipu[2].length) {
+          alert("目标达成：" + this.qipu[3]);
+          return true;
+        }
+      } else if (this.stepnum != this.qipuIdx) {
+        return false;
+      }
+
+      var move = this.qipu[2][this.qipuIdx++];
+      var mid = this.base._map[move[0]];
+      console.log("good");
+      this.base._map[move[0]] = 0;
+      this.animate = new c2g.Animate(this, mid, {
+        pos: move[0],
+        dst: move[1]
+      });
+      if (this.qipuIdx == this.qipu[2].length) {
+        alert("目标达成：" + this.qipu[3]);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  GameUI.prototype.regret = function() {
+    var base = this.base;
+    if (base._history.length > 1) {
+      base._unmove();
+      base._unmove();
+      if (this.qipu && this.qipuIdx == this.stepnum) {
+        this.qipuIdx -= 2;
+      }
+      this.stepnum -= 3;
+      this._upperTurn = !this._upperTurn;
+      this.update();
+    } else {
+      alert("");
     }
   }
   GameUI.prototype.dragSpriteImpl = function() {}
@@ -98,7 +191,7 @@
       var mvs = this._coverage._allowMoves[chm._pos];
       if (mvs && mvs.size) {
         var olw = this.ctx.lineWidth;
-        this.ctx.lineWidth = this._noHint ? 0.03 : 0.1;
+        this.ctx.lineWidth = this._noHint ? 0.05 : 0.1;
         this.ctx.strokeStyle = "#0f0";
         this.ctx.beginPath();
         for (var p of mvs) {
@@ -113,7 +206,7 @@
       }
 
       var pt = this.spottedPos;
-      this.drawChessman(pt[0], pt[1], chm);
+      if (pt) this.drawChessman(pt[0], pt[1], chm);
     }
   }
   GameUI.prototype.drawHintRoot = function() {
@@ -122,6 +215,21 @@
     var lw = this.ctx.lineWidth;
     var ss = this.ctx.strokeStyle;
     var base = this.base;
+
+    function drawbar(ma) {
+      var r = 0.2;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(ma);
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.arc(0, 0, r, 0, Math.PI / 4);
+      ctx.moveTo(-r, 0);
+      ctx.arc(0, 0, r, -Math.PI, -3 * Math.PI / 4);
+      ctx.stroke();
+      ctx.closePath();
+      ctx.restore();
+    }
 
     for (var p = 11; p < 110; p++) {
       if (base._map[p] == WALL) continue;
@@ -133,33 +241,18 @@
         ctx.lineWidth = 0.25;
         cover = this._coverage._coverPots.has(p);
         threat = this._rivalCoverage._coverPots.has(p);
-        var r = 0.2;
         var ma = Math.PI / 8;
         if (cover) {
           ctx.strokeStyle = "#00ff00";
-          ctx.beginPath();
-          ctx.moveTo(x + r * Math.cos(ma), y + r * Math.sin(ma));
-          ctx.arc(x, y, r, ma, Math.PI / 2 - ma);
-          ctx.moveTo(x + r * Math.cos(ma - Math.PI), y + r * Math
-            .sin(ma - Math.PI));
-          ctx.arc(x, y, r, ma - Math.PI, -ma - Math.PI / 2);
-          ctx.stroke();
-          ctx.closePath();
+          drawbar(ma);
         }
         if (threat) {
           ctx.strokeStyle = "#ff0000";
-          ctx.beginPath();
-          ctx.moveTo(x + r * Math.cos(-ma), y + r * Math.sin(-ma));
-          ctx.arc(x, y, r, -ma, -Math.PI / 2 + ma, true);
-          ctx.moveTo(x + r * Math.cos(-ma + Math.PI), y + r * Math
-            .sin(-ma + Math.PI));
-          ctx.arc(x, y, r, -ma + Math.PI, ma + Math.PI / 2, true);
-          ctx.stroke();
-          ctx.closePath();
+          drawbar(ma + Math.PI / 2);
         }
       } else {
         ctx.lineWidth = 0.025;
-        if ((chi > 32) == this._turn) {
+        if ((chi > 32) == this._upperTurn) { //TODO
           cover = this._coverage._rootedPots.has(p),
             threat = this._rivalCoverage._attackPots.has(p);
         } else {
@@ -291,11 +384,12 @@
     this.ctx.scale(0.06, 0.06);
     var pos = this.ctx.getTransform().inverse().transformPoint(point);
 
-    var txt = ChessMarkTexts[chm._id > 30 ? 1 : 0][chm._kind()];
+    var showRed = chm._isUpper() ^ this._onBlack;
+    var txt = ChessMarkTexts[showRed ? 1 : 0][chm._kind()];
     this.ctx.fillStyle = "#fff";
     this.ctx.fillText(txt, pos.x + 0.8, pos.y + 0.8);
 
-    this.ctx.fillStyle = chm._id > 30 ? "#f00" : "#000";
+    this.ctx.fillStyle = showRed ? "#f00" : "#000";
     this.ctx.fillText(txt, pos.x, pos.y);
     this.ctx.restore();
   }
@@ -325,21 +419,25 @@
     g_ui._noHint = !v.checked;
     g_ui.refresh();
   };
-  exports['reload'] = function(st) {}
-  exports['restart'] = function(st) { g_ui.gameStart(); }
-  exports['next'] = function() {}
-  exports['prev'] = function() {
-    var base = g_ui.base;
-    if (base._history.length > 0) {
-      base._unmove();
-      base._unmove();
-      g_ui.stepnum -= 2;
-      g_ui.updateImpl();
-      g_ui.refresh();
-    } else {
-      alert("");
-    }
-  }
+  exports['onBlack'] = function(v) {
+    g_ui._onBlack = !v.checked;
+    g_ui.flip();
+    //g_ui.stepnum--;
+    //g_ui._upperTurn = !g_ui._upperTurn;
+    //g_ui.base._flip();
+    //g_ui.update();
+  };
+  exports['reload'] = function(st) {};
+  exports['restart'] = function(
+    st) { g_ui.gameStart(); };
+  exports['next'] = function() {};
+  exports['prev'] =
+    function() { g_ui.regret(); };
+  exports['autoAct'] =
+    function() {
+      if (!g_ui.spotted)
+        g_ui.autoAct();
+    };
   exports['answer'] = function() {}
 
   function ChessMan(id, pos) {
@@ -349,7 +447,7 @@
   ChessMan.prototype._kind = function() {
     return this._id & 16 ? 7 : (this._id & 0xf) >> 1;
   }
-  ChessMan.prototype._isRed = function() {
+  ChessMan.prototype._isUpper = function() {
     return this._id > 32;
   }
   ChessMan.prototype._sameside = function(chm) {
@@ -365,7 +463,7 @@
     var res = new Set();
     switch (this._kind()) {
       case 1:
-        if (this._isRed()) {
+        if (this._isUpper()) {
           this.__shuaimove(res, board);
         } else {
           this.__jiangmove(res, board);
@@ -387,7 +485,7 @@
         this.__paomove(res, board);
         break;
       case 7:
-        if (this._isRed()) {
+        if (this._isUpper()) {
           this.__bingmove(res, board);
         } else {
           this.__zumove(res, board);
@@ -442,7 +540,7 @@
       res.add(this._pos + 11).add(this._pos + 9);
       res.add(this._pos - 11).add(this._pos - 9);
     } else {
-      res.add(this._isRed() ? 95 : 25);
+      res.add(this._isUpper() ? 95 : 25);
     }
   }
   ChessMan.prototype.__jiangmove = function(res, board) {
@@ -518,44 +616,60 @@
   }
 
 
-  function Board() {
-    this._clear();
-    this._arrange();
-  }
+  function flip(i) { return 10 * (12 - parseInt(i / 10)) - (i % 10); }
 
+  function flipX(i) { return i + 10 - 2 * (i % 10); }
+
+  function Board(bcode) {
+    this._clear();
+    this._arrange(bcode);
+  }
   Board.prototype._clear = function() {
-    this._map = new Uint8Array(120);
+    this._map = new Uint8Array(121);
     this._set_wall();
     this._mps = {};
     this._history = [];
-    this._blackchm = [];
-    this._redchm = [];
+    this._lowerchm = [];
+    this._upperchm = [];
   }
-  Board.prototype._arrange = function() {
-    var arr = [0x02, 15, 0x04, 14, 0x05, 16, 0x06, 13, //
+  Board.prototype.startArrange = [
+      // lower side
+      0x02, 15, 0x04, 14, 0x05, 16, 0x06, 13, //
       0x07, 17, 0x08, 12, 0x09, 18, 0x0a, 11, 0x0b, 19, //
       0x0c, 32, 0x0d, 38, //
       0x10, 41, 0x11, 43, 0x12, 45, 0x13, 47, 0x14, 49,
-      //
+      // upper side
       0x30, 71, 0x31, 73, 0x32, 75, 0x33, 77, 0x34, 79,
       0x2c, 82, 0x2d, 88, //
       0x27, 107, 0x28, 102, 0x29, 108, 0x2a, 101, 0x2b, 109, //
       0x22, 105, 0x24, 104, 0x25, 106, 0x26, 103 //
     ];
+  Board.prototype._arrange = function(iarr) {
+    var arr = iarr || this.startArrange;
     for (var i = 0; i < arr.length; i += 2)
       this._loc(arr[i], arr[i + 1]);
+  }
+  Board.prototype._flip = function() {
+    var res = [];
+    for (var i = 11; i < 110; i++) {
+      if (this._map[i] == WALL || !this._map[i]) continue;
+      res.push(this._map[i] ^ 0x20);
+      res.push(flip(i));
+    }
+    this._clear();
+    this._arrange(res);
   }
   Board.prototype._loc = function(id, pos) {
     this._map[pos] = id;
     var ch = this._mps[id] = new ChessMan(id, pos);
-    (ch._isRed() ? this._redchm : this._blackchm).push(ch);
+    (ch._isUpper() ? this._upperchm : this._lowerchm).push(ch);
   }
   Board.prototype._general = function(isred) {
     return this._mps[isred ? 0x22 : 0x02];
   }
 
-  Board.prototype._ischeck = function(side) {
-    var gpos = this._mps[side ? 0x02 : 0x22]._pos;
+  Board.prototype._ischeck = function(isUpperSide) {
+    var gpos = this._mps[isUpperSide ? 0x02 : 0x22]._pos;
     if (!gpos) return true;
 
     {
@@ -563,13 +677,13 @@
       if (this._map[gpos + 11] == 0) {
         if ((ma = this._map[gpos + 21]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
         if ((ma = this._map[gpos + 12]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
@@ -577,13 +691,13 @@
       if (this._map[gpos - 11] == 0) {
         if ((ma = this._map[gpos - 21]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
         if ((ma = this._map[gpos - 12]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
@@ -592,13 +706,13 @@
       if (this._map[gpos + 9] == 0) {
         if ((ma = this._map[gpos + 19]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
         if ((ma = this._map[gpos + 8]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
@@ -607,13 +721,13 @@
       if (this._map[gpos - 9] == 0) {
         if ((ma = this._map[gpos - 19]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
         if ((ma = this._map[gpos - 8]) && ma != WALL) {
           ma = this._mps[ma];
-          if (ma._isRed() == side && ma._kind() === 4) {
+          if (ma._isUpper() == isUpperSide && ma._kind() === 4) {
             return true;
           }
         }
@@ -626,7 +740,7 @@
       if (ch == WALL) break;
       cnt++;
       var chm = this._mps[ch];
-      if (chm._isRed() ^ side) continue;
+      if (chm._isUpper() ^ isUpperSide) continue;
       var kind = chm._kind();
       if ((kind === 5 && cnt === 1) || (kind === 6 && cnt === 2) || (
           kind === 7 && i === 1)) return true;
@@ -638,7 +752,7 @@
       if (ch == WALL) break;
       cnt++;
       var chm = this._mps[ch];
-      if (chm._isRed() ^ side) continue;
+      if (chm._isUpper() ^ isUpperSide) continue;
       var kind = chm._kind();
       if ((kind === 5 && cnt === 1) || (kind === 6 && cnt === 2) || (
           kind === 7 && i === 1)) return true;
@@ -650,10 +764,11 @@
       if (ch == WALL) break;
       cnt++;
       var chm = this._mps[ch];
-      if (chm._isRed() ^ side) continue;
+      if (chm._isUpper() ^ isUpperSide) continue;
       var kind = chm._kind();
-      if ((kind === 5 && cnt === 1) || (kind === 6 && cnt === 2) || (
-          kind === 7 && i === 1 && side)) return true;
+      if (((kind === 5 || kind === 1) && cnt === 1) ||
+        (kind === 6 && cnt === 2) ||
+        (kind === 7 && i === 1 && !isUpperSide)) return true;
     }
 
     for (var i = 1, p = gpos + 10, cnt = 0; cnt < 2; i++, p += 10) {
@@ -662,16 +777,17 @@
       if (ch == WALL) break;
       cnt++;
       var chm = this._mps[ch];
-      if (chm._isRed() ^ side) continue;
+      if (chm._isUpper() ^ isUpperSide) continue;
       var kind = chm._kind();
-      if ((kind === 5 && cnt === 1) || (kind === 6 && cnt === 2) || (
-          kind === 7 && i === 1 && !side)) return true;
+      if (((kind === 5 || kind === 1) && cnt === 1) ||
+        (kind === 6 && cnt === 2) ||
+        (kind === 7 && i === 1 && isUpperSide)) return true;
     }
 
     return false;
   }
-  Board.prototype._queryAvailable = function(side) {
-    var seq = side ? this._redchm : this._blackchm;
+  Board.prototype._queryAvailable = function(isUpperSide) {
+    var seq = isUpperSide ? this._upperchm : this._lowerchm;
     var avai = new Map();
     var availCnt = 0;
     var cover = new Set();
@@ -684,16 +800,14 @@
     for (var chm, i = 0; chm = seq[i]; i++) {
       if (!chm._pos) continue;
       var res = chm._genmove(this._map);
-      if (!res || !res.size) { continue; }
+      if (!res || !res.size) continue;
 
       var rres = new Set();
       for (var x of res) {
         this._move(chm._id, x);
-        var uncheck = this._ischeck(!side);
+        var checked = this._ischeck(!isUpperSide);
         this._unmove();
-        if (uncheck) {
-          continue;
-        }
+        if (checked) continue;
 
         if (6 !== chm._kind()) cover.add(x);
         if (base[x]) {
@@ -706,14 +820,14 @@
         } else rres.add(x);
       }
 
-
+      // It's the pao(canon)
       if (6 === chm._kind()) {
         res.clear();
         chm.__paocontrol(res, this._map);
         if (res.size) {
           for (var x of res) {
             this._move(chm._id, x);
-            var checked = this._ischeck(!side);
+            var checked = this._ischeck(!isUpperSide);
             this._unmove();
             if (checked) continue;
 
@@ -729,87 +843,113 @@
     }
     return new Coverage(availCnt, avai, cover, rooted, attack);
   }
-  Board.prototype._quickQueryAvailable = function(side) {
-    var seq = side ? this._redchm : this._blackchm;
-    var avai = new Map();
-    var availCnt = 0;
-    var cover = new Set();
-    var control = new Set();
-    var rooted = new Set();
-    var attack = new Set();
-    var base = this._map,
-      pits = this._mps;
 
-    for (var chm, i = 0; chm = seq[i]; i++) {
-      if (!chm._pos) continue;
-      var res = chm._genmove(this._map);
-      if (!res || !res.size) { continue; }
-
-      for (var x of res) {
-        cover.add(x);
-        if (base[x]) {
-          if (ChessMan.prototype.SameSideId(chm._id, base[x])) {
-            rooted.add(x);
-          } else {
-            attack.add(x);
-          }
-        }
-      }
-      rooted.forEach(function(x) {
-        res.delete(x);
-      });
-
-      if (6 === chm._kind()) {
-        cover.clear();
-        chm.__paocontrol(cover, this._map);
-      }
-
-      if (res.size) {
-        availCnt += res.size;
-        avai[chm._pos] = res;
-      }
-    }
-
-    return new Coverage(availCnt, avai, cover, rooted, attack);
+  Board.prototype._newmove = function(src, dst, mid) {
+    var did = this._map[dst];
+    if (!mid) mid = this._map[src];
+    var chm = this._mps[mid],
+      dchm = this._mps[did];
+    return new Move(chm, dst, dchm);
   }
-
   Board.prototype._move = function(mid, dst) {
     var did = this._map[dst];
     var chm = this._mps[mid],
       dchm = this._mps[did];
-    var helem = [mid, chm._pos, dst, dchm];
-    if (dchm) {
-      dchm._pos = 0;
-    }
+    var helem = new Move(chm, dst, dchm);
     this._history.push(helem);
-    this._map[chm._pos] = 0;
-    this._map[dst] = chm._id;
-    chm._pos = dst;
+    helem.do(this);
   }
-
   Board.prototype._unmove = function() {
     var mov = this._history.pop();
-    var chm = this._mps[mov[0]];
-    this._map[chm._pos = mov[1]] = mov[0];
-
-    if (mov[3]) {
-      var dchm = mov[3];
-      this._map[dchm._pos = mov[2]] = dchm._id;
-    } else {
-      this._map[mov[2]] = 0;
+    mov.undo(this);
+  }
+  Board.prototype.currentMove = function() {
+    if (this._history.length > 0) {
+      return this._history[this._history.length - 1]
     }
+    return null;
   }
-
   Board.prototype.isOver = function() {
-    return this._general(0x02)._pos == 0 || this._general(0x22)._pos ==
-      0;
+    return this._general(0x02)._pos == 0 || this._general(0x22)._pos == 0;
   }
-
   Board.prototype._set_wall = function() {
     for (var i = 0; i < 10; i++) {
       this._map[i] = this._map[i + 110] =
         this._map[(i + 1) * 10] = WALL;
     }
+    this._map[120] = WALL;
+  }
+
+  function Move(chm, dst, dchm) {
+    this._chm = chm;
+    this._id = chm._id;
+    this._src = chm._pos;
+    this._dst = dst;
+    this._dchm = dchm;
+  }
+  Move.prototype.match = function(arr) {
+    if (this._src == arr[0] && this._dst == arr[1]) return true;
+    return false;
+  }
+  Move.prototype.do = function(base) {
+    if (this._dchm) {
+      this._dchm._pos = 0;
+    }
+    base._map[this._src] = 0;
+    base._map[this._dst] = this._id;
+    this._chm._pos = this._dst;
+  }
+  Move.prototype.undo = function(base) {
+    var chm = base._mps[this._id];
+    base._map[this._chm._pos = this._src] = this._id;
+
+    if (this._dchm) {
+      base._map[this._dchm._pos = this._dst] = this._dchm._id;
+    } else {
+      base._map[this._dst] = 0;
+    }
+  }
+  Move.prototype.explain = function(base) {
+    var isUpper = this._chm._isUpper();
+    var showRed = isUpper ^ g_ui._onBlack;
+    var kind = this._chm._kind();
+    var ox = this._src % 10;
+    var oy = (this._src - ox) / 10;
+    var dx = this._dst % 10;
+    var dy = (this._dst - dx) / 10;
+    var dpos = this._dst - this._src;
+    var msg = "";
+    var vertDup = false;
+    if (kind == 7) {
+
+    } else {
+      for (var y = 1, aim = this._id ^ 1, i = 10 + ox; y < 11; i += 10,
+        y++) {
+        if (base._map[i] == aim) {
+          vertDup = true;
+          msg += isUpper == (y > oy) ? "前" : "后";
+          break;
+        }
+      }
+    }
+
+    msg += ChessMarkTexts[showRed ? 1 : 0][kind];
+    if (!vertDup) {
+      msg += ChineseNumber[isUpper ? 10 - ox : ox];
+    }
+
+    if (dy == oy) {
+      msg += "平" + ChineseNumber[isUpper ? 10 - dx : dx];
+    } else {
+      msg += isUpper == (dy < oy) ? "进" : "退";
+      if (ox == dx) {
+        msg += ChineseNumber[Math.abs(dy - oy)];
+      } else {
+        msg += ChineseNumber[isUpper ? 10 - dx : dx];
+      }
+    }
+
+    return msg;
   }
 
   function Coverage(num, moves, cover, roots, attacks) {
@@ -821,19 +961,19 @@
   }
 
   function Evaluate(base, current) {
-    var cov1 = base._quickQueryAvailable(current);
-    if (cov1._availCount == 0) return -Infinity;
+    var cov1 = base._queryAvailable(current);
+    if (cov1._availCount == 0) return -WINSCORE;
     var rjs = base._general(!current);
-    if (cov1._attackPots.has(rjs._pos)) return Infinity;
-    var cov2 = base._quickQueryAvailable(!current);
+    if (cov1._attackPots.has(rjs._pos)) return WINSCORE;
+    var cov2 = base._queryAvailable(!current);
     var zjs = base._general(current);
-    if (cov2._attackPots.has(zjs._pos)) return -Infinity;
+    if (cov2._attackPots.has(zjs._pos)) return -WINSCORE;
 
     var score = 0;
-    score += staticChm(base._redchm) - staticChm(base._blackchm);
-    score += (cov1._coverPots.size - cov2._coverPots.size) * 10;
-    score += (cov1._rootedPots.size - cov2._rootedPots.size) * 5;
-    score += (cov1._attackPots.size - cov2._attackPots.size) * 5;
+    score += staticChm(base._upperchm) - staticChm(base._lowerchm);
+    score += (cov1._coverPots.size - cov2._coverPots.size) * 2;
+    score += (cov1._rootedPots.size - cov2._rootedPots.size) * 2;
+    score += (cov1._attackPots.size - cov2._attackPots.size) * 2;
     //score += (cov1._availCount - cov2._availCount) * 8;
 
     return score;
@@ -855,7 +995,7 @@
           meta[k] = meta[k] ? 1 : 2;
           break;
         case 7:
-          if (chm._isRed() && chm._pos < 60) {
+          if (chm._isUpper() && chm._pos < 60) {
             x = (chm._pos % 10) - 5;
             x = 16 - x * x;
             score += x * 3;
@@ -863,7 +1003,7 @@
             y = 17 - y * y
             score += y * 2;
           }
-          if (!chm._isRed() && chm._pos > 60) {
+          if (!chm._isUpper() && chm._pos > 60) {
             x = (chm._pos % 10) - 5;
             x = 16 - x * x;
             score += x * 3;
@@ -884,15 +1024,20 @@
   }
 
   function AISearch(base, turn, depth) {
-    var avaiables = base._quickQueryAvailable(turn);
+    var avaiables = base._queryAvailable(turn);
     var bestMove, val, bestScore = -Infinity;
+    var alpha = Infinity,
+      beta = -alpha;
     for (var ch in avaiables._allowMoves) {
       ch = parseInt(ch);
       var chm = base._map[ch];
       var mvs = avaiables._allowMoves[ch];
       for (var pt of mvs) {
         base._move(chm, pt);
-        val = -AlphaBetaSearch(base, !turn, depth, 1000000, -1000000);
+        if (pt == 97 && chm == 13) {
+          chm = chm;
+        }
+        val = -AlphaBetaSearch(base, !turn, depth, alpha, beta);
         base._unmove();
         if (val > bestScore) {
           bestScore = val;
@@ -905,11 +1050,17 @@
   }
 
   function AlphaBetaSearch(base, turn, depth, mxv, mnv) {
-    if (!base._general(turn)._pos) return -Infinity;
-    if (!base._general(!turn)._pos) return Infinity;
-    if (depth <= 0) return Evaluate(base, turn);
+    if (!base._general(turn)._pos) return -WINSCORE - depth;
+    if (!base._general(!turn)._pos) return WINSCORE + depth;
+    if (depth <= 0) {
+      var score = Evaluate(base, turn);
+      return score + depth * Math.sign(score);
+    }
 
-    var avaiables = base._quickQueryAvailable(turn);
+    var avaiables = base._queryAvailable(turn);
+    if (avaiables._availCount == 0) return -WINSCORE - depth;
+    if (avaiables._attackPots.has(base._general(!turn)._pos))
+      return WINSCORE + depth;
     for (var ch in avaiables._allowMoves) {
       ch = parseInt(ch);
       var chm = base._map[ch];
@@ -918,16 +1069,93 @@
         base._move(chm, pt);
         var val = -AlphaBetaSearch(base, !turn, depth - 1, -mnv, -mxv);
         base._unmove();
-        if (val >= mnv) {
-          if (val == mnv) {
-
-            mnv = val;
-          } else mnv = val;
-        }
-
-        if (val >= mxv) return mnv;
+        if (val >= mxv) return val;
+        if (val > mnv) mnv = val;
       }
     }
     return mnv;
   }
+
+
+  function OpeningWalker() {
+    this._step = 0;
+    this._start = 0;
+    this._end = openningData.length;
+    this._isMirror = false;
+    this._history = "";
+  }
+  OpeningWalker.prototype.get = function(base) {
+    if (this._start < this._end) {
+      var sel = parseInt(this._start + (this._end - this._start) * Math
+        .random());
+
+      var cur = openningData[sel];
+      var mov = cur.substr(this._step * 2, 2);
+
+      var src = mov.charCodeAt(0);
+      var dst = mov.charCodeAt(1);
+      if (this._isMirror) {
+        src = flipX(src);
+        dst = flipX(dst);
+      }
+
+      return base._newmove(src, dst);
+    }
+
+    return null;
+  }
+  OpeningWalker.prototype.focus = function(move) {
+    if (this._step == 0 && move._src % 10 > 5) {
+      this._isMirror = true;
+    }
+    this._step++;
+    if (this._start >= this._end) return false;
+
+    var s;
+    if (this._isMirror) {
+      s = String.fromCharCode(flipX(move._src)) +
+        String.fromCharCode(flipX(move._dst));
+    } else {
+      s = String.fromCharCode(move._src) +
+        String.fromCharCode(move._dst);
+    }
+
+    var newhist = this._history + s;
+    for (var found = 0, i = this._start; i < this._end; i++) {
+      var cur = openningData[i];
+      if (cur.length > newhist.length) {
+        if (cur.substr(0, newhist.length) == newhist) {
+          if (!found) {
+            this._start = i;
+            found++;
+          }
+        } else {
+          if (found) {
+            this._end = i;
+            found++;
+            break;
+          }
+        }
+      } else {
+        if (found) {
+          this._end = i;
+          found++;
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      this._start = this._end;
+    }
+
+    console.log(this._start, this._end);
+    if (this._start < this._end) {
+      this._history = newhist;
+      return true;
+    }
+    return false;
+  }
+
+
 })();

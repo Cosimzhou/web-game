@@ -123,27 +123,30 @@
 
 
   function Board() {
-    this.board = new Uint8Array(kCCKR_LEN);
+    this._map = new Uint8Array(kCCKR_LEN);
+  }
+  Board.prototype.isOver = function() {
+    return false;
   }
   Board.prototype.clone = function() {
     var b = new Board();
-    b.board = Uint8Array.from(this.board);
+    b._map = Uint8Array.from(this._map);
     return b;
   }
   Board.prototype.move = function(o, d) {
-    var chk = this.board[o];
-    if (chk && !this.board[d]) {
-      this.board[d] = chk;
-      this.board[o] = 0;
+    var chk = this._map[o];
+    if (chk && !this._map[d]) {
+      this._map[d] = chk;
+      this._map[o] = 0;
       return true;
     }
     return false;
   }
   Board.prototype.unmove = function(o, d) {
-    var chk = this.board[d];
-    if (chk && !this.board[o]) {
-      this.board[o] = chk;
-      this.board[d] = 0;
+    var chk = this._map[d];
+    if (chk && !this._map[o]) {
+      this._map[o] = chk;
+      this._map[d] = 0;
       return true;
     }
     return false;
@@ -152,14 +155,14 @@
     for (var elem of array) {
       var txt = cckr_nest_indices[elem - 1];
       for (var i = 0; i < txt.length; ++i) {
-        this.board[txt.charCodeAt(i)] = elem;
+        this._map[txt.charCodeAt(i)] = elem;
       }
     }
   }
   Board.prototype.allMoves = function(side) {
     var moves = [];
     for (var i = 1; i < kCCKR_LEN; ++i) {
-      if (this.board[i] == side) {
+      if (this._map[i] == side) {
         var poss = this.moveForPit(i);
         poss.forEach(function(x) {
           moves.push([i, x]);
@@ -170,7 +173,7 @@
     return moves;
   }
   Board.prototype.moveForPit = function(idx) {
-    if (this.board[idx] == 0) return;
+    if (this._map[idx] == 0) return;
 
     var res = new Set();
     res.add(idx);
@@ -178,11 +181,11 @@
       var nexti = cckr_table_next_move[d].charCodeAt(idx);
       if (nexti == 0) continue;
 
-      if (this.board[nexti] == 0) {
+      if (this._map[nexti] == 0) {
         res.add(nexti);
       } else {
         var nextii = cckr_table_next_move[d].charCodeAt(nexti);
-        if (nextii > 0 && this.board[nextii] == 0) {
+        if (nextii > 0 && this._map[nextii] == 0) {
           this._jumpsForPit(nextii, res);
         }
       }
@@ -194,14 +197,14 @@
   }
 
   Board.prototype._jumpsForPit = function(idx, visit) {
-    if (this.board[idx] || visit.has(idx)) return;
+    if (this._map[idx] || visit.has(idx)) return;
     visit.add(idx);
 
     for (var d = 0; d < 6; d++) {
       var nexti = cckr_table_next_move[d].charCodeAt(idx);
-      if (nexti && this.board[nexti]) {
+      if (nexti && this._map[nexti]) {
         var nextii = cckr_table_next_move[d].charCodeAt(nexti);
-        if (nextii && this.board[nextii] == 0) {
+        if (nextii && this._map[nextii] == 0) {
           this._jumpsForPit(nextii, visit);
         }
       }
@@ -211,7 +214,7 @@
   }
 
   Board.prototype.searchPath = function(start, dest) {
-    if (!start || !dest || !this.board[start] || this.board[dest]) return;
+    if (!start || !dest || !this._map[start] || this._map[dest]) return;
 
     var visit = new Set();
     var path = [];
@@ -221,9 +224,9 @@
         return [dest];
       }
 
-      if (nexti && this.board[nexti]) {
+      if (nexti && this._map[nexti]) {
         var nextii = cckr_table_next_move[d].charCodeAt(nexti);
-        if (nextii && !this.board[nextii]) {
+        if (nextii && !this._map[nextii]) {
           if (nextii == dest) {
             path.push(dest);
             return path;
@@ -246,13 +249,13 @@
   }
 
   Board.prototype._jumpPath = function(start, dest, path, visit) {
-    if (!start || !dest || this.board[start] || this.board[dest]) return;
+    if (!start || !dest || this._map[start] || this._map[dest]) return;
 
     for (var d = 0; d < 6; ++d) {
       var nexti = cckr_table_next_move[d].charCodeAt(start);
-      if (nexti && this.board[nexti]) {
+      if (nexti && this._map[nexti]) {
         var nextii = cckr_table_next_move[d].charCodeAt(nexti);
-        if (nextii && !this.board[nextii]) {
+        if (nextii && !this._map[nextii]) {
           if (nextii == dest) {
             path.push(dest);
             return path;
@@ -304,7 +307,7 @@
   //GameAI.prototype.getMen = function() {
   //  var pit = [];
   //  for (var i = 1; i < kCCKR_LEN; ++i) {
-  //    var chk = this.base.board[i];
+  //    var chk = this.base._map[i];
   //    if (chk) {
   //      //if
   //    }
@@ -314,7 +317,7 @@
   GameAI.prototype.isGameWon = function(side) {
     var miny = {};
     for (var i = 1; i < kCCKR_LEN; ++i) {
-      var chk = this.base.board[i];
+      var chk = this.base._map[i];
       if (chk == side) {
         if (miny[chk] == null) {
           miny[chk] = 20;
@@ -358,10 +361,10 @@
     var min_val = PJ_MAVSCORE;
     var moves = this.base.allMoves(side);
     for (var mv of moves) {
-      var chk = this.base.board[mv[0]];
+      var chk = this.base._map[mv[0]];
       // Move
-      this.base.board[mv[0]] = 0;
-      this.base.board[mv[1]] = chk;
+      this.base._map[mv[0]] = 0;
+      this.base._map[mv[1]] = chk;
 
       // Search
       var score = -this.test(turn + 1, level - 1);
@@ -373,8 +376,8 @@
       }
 
       // Undo
-      this.base.board[mv[1]] = 0;
-      this.base.board[mv[0]] = chk;
+      this.base._map[mv[1]] = 0;
+      this.base._map[mv[0]] = chk;
     }
 
     return score;
@@ -383,7 +386,7 @@
   GameAI.prototype.evaluate = function(side) {
     var score = {};
     for (var i = 1; i < kCCKR_LEN; ++i) {
-      var chk = this.base.board[i];
+      var chk = this.base._map[i];
       if (chk) {
         if (score[chk] == null) score[chk] = 0;
         score[chk] += in2y(i, chk - 1);
@@ -438,7 +441,7 @@
     var ymin = 20,
       ymax = 0;
     for (var i = 1, cnt = 10; i < kCCKR_LEN; ++i) {
-      var chk = this.base.board[i];
+      var chk = this.base._map[i];
       if (chk == side) {
         var x = in2x(i, chk - 1);
         var y = in2y(i, chk - 1);
@@ -466,8 +469,8 @@
     this.idx = 0;
     this.frame_num = 5;
     this.dest = path[path.length - 1];
-    this.chkside = ui.game.base.board[src];
-    ui.game.base.board[src] = 0;
+    this.chkside = ui.game.base._map[src];
+    ui.game.base._map[src] = 0;
 
     var x = in2x(src),
       y = in2y(src);
@@ -508,7 +511,7 @@
           sound();
           anm.ui.animate = null;
           clearInterval(anm.interval);
-          anm.ui.game.base.board[anm.dest] = anm.chkside;
+          anm.ui.game.base._map[anm.dest] = anm.chkside;
           anm.ui.game.turnSide();
         }
       } else {
@@ -523,12 +526,12 @@
   var GameUI = c2g.GameUI;
   GameUI.prototype.initImpl = function() {
     this.game = new Game();
+    this.base = this.game.base;
     this.current_possible = null;
     this.movingObject = null;
-    this.animate = null;
 
     this.radius = 0.4;
-    this.offset = [60, 60];
+    this.offset = [0, 40];
   }
 
   //
@@ -551,23 +554,23 @@
   //  canvas.addEventListener("mousedown", function(e) {
   //    if (ui.animate) return;
   //    var idx = ui.pointToIdx(e.offsetX, e.offsetY);
-  //    if (idx && ui.game.base.board[idx] == ui.game.side) {
+  //    if (idx && ui.game.base._map[idx] == ui.game.side) {
   //      ui.current_possible = ui.game.base.moveForPit(idx);
 
   //      if (ui.current_possible.size) {
   //        ui.movingObject = {
   //          src: idx,
-  //          clr: ui.game.base.board[idx],
+  //          clr: ui.game.base._map[idx],
   //          pt: [e.offsetX, e.offsetY]
   //        };
-  //        ui.game.base.board[idx] = 0;
+  //        ui.game.base._map[idx] = 0;
   //      }
   //      ui.refresh();
   //    }
   //  });
   //  canvas.addEventListener("mouseleave", function(e) {
   //    if (ui.movingObject) {
-  //      ui.game.base.board[ui.movingObject.src] = ui.movingObject.clr;
+  //      ui.game.base._map[ui.movingObject.src] = ui.movingObject.clr;
   //      ui.movingObject = null;
   //      ui.current_possible = null;
   //      ui.refresh();
@@ -578,12 +581,12 @@
   //      var idx = ui.pointToIdx(e.offsetX, e.offsetY);
 
   //      if (ui.current_possible.has(idx)) {
-  //        ui.game.base.board[idx] = ui.movingObject.clr;
+  //        ui.game.base._map[idx] = ui.movingObject.clr;
   //        ui.game.turnSide();
 
   //        idx = "good";
   //      } else {
-  //        ui.game.base.board[ui.movingObject.src] = ui.movingObject.clr;
+  //        ui.game.base._map[ui.movingObject.src] = ui.movingObject.clr;
   //      }
 
   //      ui.movingObject = null;
@@ -607,6 +610,15 @@
   //    }
   //  });
   //}
+  GameUI.prototype.pickSpriteImpl = function(mid) {
+    var brd = this.base;
+    var chm = brd._map[mid];
+    if (chm != null && (this.side() == chm._isRed())) {
+      brd._map[chm._pos] = 0;
+    } else {
+      this.spotted = null;
+    }
+  }
   GameUI.prototype.pointToIdx = function(px, py) {
     var x = parseInt((px - this.offset[0]) * 2 / this._screenScale + .5) /
       2;
@@ -691,7 +703,7 @@
     var R = this.radius;
     var gr = 0.15;
     for (var i = 1; i < kCCKR_LEN; ++i) {
-      var clr = this.game.base.board[i];
+      var clr = this.game.base._map[i];
       if (clr == 0) continue;
 
       var x = in2x(i),
@@ -737,7 +749,7 @@
 
   GameUI.prototype.drawMovingObject = function() {
     if (this.movingObject == null) return;
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    //this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     var R = this._screenScale * this.radius * 1.25;
     var gr = R / 2;
@@ -783,7 +795,7 @@
   }
 
   GameUI.prototype._drawCoordinate = function(d = 0) {
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    //this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.fillStyle = "black";
     this.ctx.font = "10px Verdana";
     for (var i = 1; i < kCCKR_LEN; i++) {
@@ -804,10 +816,6 @@
   }
 
   GameUI.prototype.drawBoard = function() {
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.clearRect(0, 0, this._screenWidth, this._screenHeight);
-    this.ctx.translate(...this.offset);
-    this.ctx.scale(this._screenScale, this._screenScale);
     this.ctx.lineWidth = 1 / this._screenScale;
 
     this._drawNestTriangles();
@@ -815,11 +823,6 @@
     this._drawPits();
   }
 
-  //GameUI.prototype.transform = function() {
-  //  this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-  //  this.ctx.translate(...this.offset);
-  //  this.ctx.scale(this._screenScale, this._screenScale);
-  //}
 
   var g_ui;
 
